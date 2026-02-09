@@ -22,8 +22,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from api.client import OfficeRnDClient
 from api.config import AppConfig
-from db.engine import get_engine, session_context
-from db.models import Base, Company, Membership, Payment, SyncJob, SyncJobCompany
+from db.engine import session_context
+from db.models import Company, Membership, Payment, SyncJob, SyncJobCompany
 from sync.pipeline import sync_endpoint_pipeline
 from sync.progress import update_progress
 
@@ -597,9 +597,9 @@ def main():
     # Load config and create client
     config = AppConfig.from_env()
 
-    # Create tables
-    engine = get_engine()
-    Base.metadata.create_all(engine)
+    # Ensure DB schema is up to date (new tables + missing columns)
+    from db.engine import ensure_schema
+    ensure_schema()
 
     with OfficeRnDClient(config) as client:
         asyncio.run(
