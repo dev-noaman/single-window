@@ -45,12 +45,17 @@ jobs:
             # --- Docker services ---
             DOCKER_SERVICES=("API-php" "API-node" "API-CR" "Portal" "scrape-sw-codes" "scrape-sw-gsheet")
 
+            # Remove stale files that git won't clean (gitignored but present on disk)
+            rm -f "$REPO_DIR/Portal/index.html"
+
             for svc in "${DOCKER_SERVICES[@]}"; do
               if [ -f "$REPO_DIR/$svc/docker-compose.yml" ]; then
                 echo ""
                 echo "[*] Deploying $svc..."
                 cd "$REPO_DIR/$svc"
                 docker compose down --remove-orphans 2>/dev/null || true
+                # Remove old image to prevent stale layers
+                docker rmi -f $(docker compose config --images 2>/dev/null) 2>/dev/null || true
                 docker compose build --no-cache --quiet
                 docker compose up -d
                 echo "[OK] $svc deployed"
