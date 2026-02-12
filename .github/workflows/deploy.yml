@@ -46,8 +46,12 @@ jobs:
             # --- Docker services ---
             DOCKER_SERVICES=("API-php" "API-node" "API-CR" "Portal" "scrape-sw-codes" "scrape-sw-gsheet")
 
-            # Remove stale files that git won't clean (gitignored but present on disk)
-            rm -f "$REPO_DIR/Portal/index.html"
+            # Force restore Portal directory (VPS had stale files git couldn't fix)
+            echo "[*] Cleaning Portal directory..."
+            rm -rf "$REPO_DIR/Portal"
+            cd "$REPO_DIR"
+            git checkout -- Portal/
+            echo "[OK] Portal files restored from git"
 
             for svc in "${DOCKER_SERVICES[@]}"; do
               if [ -f "$REPO_DIR/$svc/docker-compose.yml" ]; then
