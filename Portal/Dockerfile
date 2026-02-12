@@ -36,6 +36,9 @@ RUN echo '[www]' > /usr/local/etc/php-fpm.d/www.conf \
     && echo 'pm.min_spare_servers = 1' >> /usr/local/etc/php-fpm.d/www.conf \
     && echo 'pm.max_spare_servers = 3' >> /usr/local/etc/php-fpm.d/www.conf
 
+# Remove any non-PHP index files (ensure terminal-style index.php is the only landing page)
+RUN rm -f /var/www/html/index.html
+
 # Set permissions
 RUN chown -R www-data:www-data /var/www/html
 

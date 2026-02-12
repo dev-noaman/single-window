@@ -23,6 +23,9 @@ officernd/bff/.env
 # Sync data files
 officernd/data/
 
+# Portal landing page (only terminal-style index.php should be used)
+Portal/index.html
+
 # IDE/tool configs
 .vscode/
 .claude/
