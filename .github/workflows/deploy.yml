@@ -43,19 +43,81 @@ jobs:
 
             echo "[OK] Code is up to date"
 
-            # --- Docker services ---
-            DOCKER_SERVICES=("API-php" "API-node" "API-CR" "Portal" "scrape-sw-codes" "scrape-sw-gsheet")
-
-            # Force restore Portal directory (VPS had stale files git couldn't fix)
-            echo "[*] Cleaning Portal directory..."
+            # --- Force correct Portal files (VPS had stale files git couldn't fix) ---
+            echo "[*] Writing Portal files directly..."
             rm -rf "$REPO_DIR/Portal"
+            mkdir -p "$REPO_DIR/Portal"
+
+            # Write the correct Dockerfile (PHP-FPM based)
+            cat > "$REPO_DIR/Portal/Dockerfile" << 'DOCKERFILE'
+            FROM php:8.4-fpm
+
+            # Install system dependencies
+            RUN apt-get update && apt-get install -y --no-install-recommends \
+                nginx \
+                curl \
+                ca-certificates \
+                && rm -rf /var/lib/apt/lists/*
+
+            # Set working directory
+            WORKDIR /var/www/html
+
+            # Copy application files
+            COPY index.php /var/www/html/index.php
+            COPY php-health.php /var/www/html/php-health.php
+
+            # Copy Nginx configuration
+            COPY nginx.conf /etc/nginx/sites-available/default
+
+            # Create PHP-FPM socket directory and set permissions
+            RUN mkdir -p /run/php \
+                && chown -R www-data:www-data /run/php \
+                && chmod 755 /run/php
+
+            # Configure PHP-FPM to use socket
+            RUN echo '[www]' > /usr/local/etc/php-fpm.d/www.conf \
+                && echo 'user = www-data' >> /usr/local/etc/php-fpm.d/www.conf \
+                && echo 'group = www-data' >> /usr/local/etc/php-fpm.d/www.conf \
+                && echo 'listen = /run/php/php-fpm.sock' >> /usr/local/etc/php-fpm.d/www.conf \
+                && echo 'listen.owner = www-data' >> /usr/local/etc/php-fpm.d/www.conf \
+                && echo 'listen.group = www-data' >> /usr/local/etc/php-fpm.d/www.conf \
+                && echo 'listen.mode = 0660' >> /usr/local/etc/php-fpm.d/www.conf \
+                && echo 'pm = dynamic' >> /usr/local/etc/php-fpm.d/www.conf \
+                && echo 'pm.max_children = 5' >> /usr/local/etc/php-fpm.d/www.conf \
+                && echo 'pm.start_servers = 2' >> /usr/local/etc/php-fpm.d/www.conf \
+                && echo 'pm.min_spare_servers = 1' >> /usr/local/etc/php-fpm.d/www.conf \
+                && echo 'pm.max_spare_servers = 3' >> /usr/local/etc/php-fpm.d/www.conf
+
+            # Remove any non-PHP index files (ensure terminal-style index.php is the only landing page)
+            RUN rm -f /var/www/html/index.html
+
+            # Set permissions
+            RUN chown -R www-data:www-data /var/www/html
+
+            # Expose port
+            EXPOSE 80
+
+            # Copy the entrypoint script and fix Windows line endings
+            COPY docker-entrypoint.sh /docker-entrypoint.sh
+            RUN sed -i 's/\r$//' /docker-entrypoint.sh && chmod +x /docker-entrypoint.sh
+
+            CMD ["/docker-entrypoint.sh"]
+            DOCKERFILE
+
+            # Remove leading whitespace from heredoc
+            sed -i 's/^            //' "$REPO_DIR/Portal/Dockerfile"
+
+            # Restore remaining Portal files from git
             cd "$REPO_DIR"
-            git checkout -- Portal/
-            echo "[DEBUG] Portal/Dockerfile first line:"
-            head -1 "$REPO_DIR/Portal/Dockerfile"
+            git checkout -- Portal/index.php Portal/php-health.php Portal/nginx.conf Portal/docker-entrypoint.sh Portal/docker-compose.yml Portal/noaman.cloud.nginx.conf Portal/.dockerignore
+
+            echo "[DEBUG] Portal/Dockerfile first line: $(head -1 $REPO_DIR/Portal/Dockerfile)"
             echo "[DEBUG] Portal files:"
             ls -la "$REPO_DIR/Portal/"
-            echo "[OK] Portal files restored from git"
+            echo "[OK] Portal files ready"
+
+            # --- Docker services ---
+            DOCKER_SERVICES=("API-php" "API-node" "API-CR" "Portal" "scrape-sw-codes" "scrape-sw-gsheet")
 
             for svc in "${DOCKER_SERVICES[@]}"; do
               if [ -f "$REPO_DIR/$svc/docker-compose.yml" ]; then
@@ -67,12 +129,9 @@ jobs:
                 docker compose up -d
                 # Verify Portal container content
                 if [ "$svc" = "Portal" ]; then
-                  echo "[DEBUG] Portal container files:"
-                  docker exec PORTAL ls -la /var/www/html/ 2>/dev/null || docker exec PORTAL ls -la /usr/share/nginx/html/ 2>/dev/null || echo "[DEBUG] Could not list container files"
-                  echo "[DEBUG] Portal container Dockerfile check - index.php exists:"
-                  docker exec PORTAL test -f /var/www/html/index.php && echo "YES" || echo "NO"
-                  echo "[DEBUG] Host nginx config:"
-                  cat /etc/nginx/sites-available/noaman.cloud 2>/dev/null | head -10 || echo "[DEBUG] No host nginx config found"
+                  echo "[DEBUG] Portal container check:"
+                  docker exec PORTAL ls /var/www/html/ 2>/dev/null || echo "[DEBUG] /var/www/html not found"
+                  docker exec PORTAL cat /etc/nginx/sites-available/default 2>/dev/null | head -3 || echo "[DEBUG] no nginx config"
                 fi
                 echo "[OK] $svc deployed"
               else
