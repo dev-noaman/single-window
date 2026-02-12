@@ -31,6 +31,7 @@ jobs:
             if [ -d "$REPO_DIR/.git" ]; then
               echo "[*] Pulling latest code..."
               cd "$REPO_DIR"
+              git remote set-url origin "$REPO_URL"
               git fetch origin main
               git reset --hard origin/main
               git clean -fd
@@ -107,9 +108,10 @@ jobs:
             # Remove leading whitespace from heredoc
             sed -i 's/^            //' "$REPO_DIR/Portal/Dockerfile"
 
-            # Restore remaining Portal files from git
+            # Restore remaining Portal files from git (now pulling from correct repo)
             cd "$REPO_DIR"
-            git checkout -- Portal/index.php Portal/php-health.php Portal/nginx.conf Portal/docker-entrypoint.sh Portal/docker-compose.yml Portal/noaman.cloud.nginx.conf Portal/.dockerignore
+            git checkout -- Portal/index.php Portal/php-health.php Portal/nginx.conf Portal/docker-entrypoint.sh Portal/docker-compose.yml Portal/noaman.cloud.nginx.conf
+            git checkout -- Portal/.dockerignore 2>/dev/null || true
 
             echo "[DEBUG] Portal/Dockerfile first line: $(head -1 $REPO_DIR/Portal/Dockerfile)"
             echo "[DEBUG] Portal files:"
