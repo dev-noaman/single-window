@@ -51,7 +51,7 @@ jobs:
                 echo "[*] Deploying $svc..."
                 cd "$REPO_DIR/$svc"
                 docker compose down --remove-orphans 2>/dev/null || true
-                docker compose build --quiet
+                docker compose build --no-cache --quiet
                 docker compose up -d
                 echo "[OK] $svc deployed"
               else
