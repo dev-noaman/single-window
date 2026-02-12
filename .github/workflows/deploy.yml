@@ -51,6 +51,10 @@ jobs:
             rm -rf "$REPO_DIR/Portal"
             cd "$REPO_DIR"
             git checkout -- Portal/
+            echo "[DEBUG] Portal/Dockerfile first line:"
+            head -1 "$REPO_DIR/Portal/Dockerfile"
+            echo "[DEBUG] Portal files:"
+            ls -la "$REPO_DIR/Portal/"
             echo "[OK] Portal files restored from git"
 
             for svc in "${DOCKER_SERVICES[@]}"; do
@@ -59,10 +63,17 @@ jobs:
                 echo "[*] Deploying $svc..."
                 cd "$REPO_DIR/$svc"
                 docker compose down --remove-orphans 2>/dev/null || true
-                # Remove old image to prevent stale layers
-                docker rmi -f $(docker compose config --images 2>/dev/null) 2>/dev/null || true
                 docker compose build --no-cache --quiet
                 docker compose up -d
+                # Verify Portal container content
+                if [ "$svc" = "Portal" ]; then
+                  echo "[DEBUG] Portal container files:"
+                  docker exec PORTAL ls -la /var/www/html/ 2>/dev/null || docker exec PORTAL ls -la /usr/share/nginx/html/ 2>/dev/null || echo "[DEBUG] Could not list container files"
+                  echo "[DEBUG] Portal container Dockerfile check - index.php exists:"
+                  docker exec PORTAL test -f /var/www/html/index.php && echo "YES" || echo "NO"
+                  echo "[DEBUG] Host nginx config:"
+                  cat /etc/nginx/sites-available/noaman.cloud 2>/dev/null | head -10 || echo "[DEBUG] No host nginx config found"
+                fi
                 echo "[OK] $svc deployed"
               else
                 echo "[SKIP] $svc - no docker-compose.yml"
