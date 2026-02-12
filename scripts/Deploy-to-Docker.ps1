@@ -46,12 +46,12 @@ $ErrorActionPreference = "Stop"
 $ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 $LogFile = $null
 
-# VPS Configuration
-$VpsHost = "31.220.111.113"
-$VpsUser = "root"
-$VpsPassword = "Swa@Adel2022"
+# VPS Configuration (reads from environment variables, prompts if not set)
+$VpsHost = if ($env:VPS_HOST) { $env:VPS_HOST } else { Read-Host "Enter VPS host" }
+$VpsUser = if ($env:VPS_USER) { $env:VPS_USER } else { Read-Host "Enter VPS username" }
+$VpsPassword = if ($env:VPS_PASS) { $env:VPS_PASS } else { Read-Host "Enter VPS password" }
 $VpsPath = "/root/scrapers"
-$VpsHostKey = "ssh-ed25519 255 SHA256:br5ADDgHrTODqLVxk/qlDPK0qjNr8+awdUExclqzbN0"
+$VpsHostKey = if ($env:VPS_HOST_KEY) { $env:VPS_HOST_KEY } else { "ssh-ed25519 255 SHA256:br5ADDgHrTODqLVxk/qlDPK0qjNr8+awdUExclqzbN0" }
 
 # Color configuration for output
 $Colors = @{
