@@ -99,7 +99,8 @@ docker-compose up -d --build
 | API-php | 8080 | `/scraper.php?code={code}` | Python Playwright scraper |
 | API-node | 8081 | `/scrape?code={code}` | Node.js TypeScript scraper |
 | API-node | 8081 | `/health` | Health check |
-| API-CR | 8086 | `/search?cr={cr_number}` | Company search by CR |
+| API-CR | 8086 | `/search?cr={cr_number}` | Company search by CR (single result) |
+| API-CR | 8086 | `/search?q={query}` | Search by CR, EN name, or AR name (multiple results) |
 | API-CR | 8086 | `/download?cr={cr}&type={CR\|BOTH}` | Download certificate PDFs |
 | API-CR | 8086 | `/health` | Health check |
 | Portal | 8082 | `/` | Web interface |
@@ -112,7 +113,8 @@ docker-compose up -d --build
 | officernd BFF | 8088 | `/api/officernd/progress` | Sync progress (cached 1s) |
 | officernd BFF | 8088 | `/api/officernd/companies` | Per-company sync results |
 | officernd BFF | 8088 | `/api/officernd/phases` | Phase progress tracker (cached 2s) |
-| officernd BFF | 8088 | `/api/officernd/sync/run` | Trigger sync (POST) |
+| officernd BFF | 8088 | `/api/officernd/sync/run` | Trigger sync (POST, modes: full/incremental/smart) |
+| officernd BFF | 8088 | `/api/officernd/export` | Export DB as pg_dump SQL backup |
 
 ## API Response Format
 
@@ -169,9 +171,9 @@ All containers follow naming pattern for VPS path `/root/scrapers/`:
 - **API-node/src/scrapers/FastQatarScraper.ts**: Main TypeScript scraper implementation
 - **API-node/server.js**: HTTP server wrapper
 - **API-php/scraper.py**: Main Python async scraper
-- **API-CR/auto_search_company.py**: Company search and certificate download
-- **API-CR/api_server.py**: HTTP API wrapper for certificate downloads
-- **Portal/index.php**: Web portal with engine selection and CR download modal
+- **API-CR/auto_search_company.py**: Company search and certificate download (`run_company_search` for single CR, `search_companies_by_query` for name/CR multi-result search)
+- **API-CR/api_server.py**: HTTP API wrapper for certificate downloads and company search
+- **Portal/index.php**: Web portal with engine selection and CR search/download modal (supports search by CR number, English name, or Arabic name with multi-result selection)
 - **scrape-sw-codes/discover_codes.py**: Business codes fetcher (2800+ codes)
 - **scrape-sw-codes/Dockerfile.cron**: Cron scheduler (8 AM Qatar time)
 - **officernd/bff/src/main.ts**: NestJS BFF bootstrap (port 8088)
@@ -182,7 +184,7 @@ All containers follow naming pattern for VPS path `/root/scrapers/`:
 - **officernd/bff/frontend/src/components/PhaseTracker.tsx**: Phase progress bars with expandable endpoint details
 - **officernd/bff/frontend/src/api/officernd.ts**: API types and fetch functions for all BFF endpoints
 - **officernd/api/routes/__init__.py**: Shared helpers (paginated_query, get_single, apply_filters)
-- **officernd/api/sync_routes.py**: FastAPI sync endpoints (status, progress, phases, run, companies)
+- **officernd/api/sync_routes.py**: FastAPI sync endpoints (status, progress, phases, run, companies, export)
 - **officernd/sync/run_by_company.py**: 3-phase async sync orchestrator
 
 ## Build and Run: officernd-bff
@@ -208,7 +210,13 @@ npm run start:prod                                     # Run on port 8088
 
 ## OfficeRnD Sync Features
 
-- **Background sync**: Sync runs in a daemon thread on the server, survives browser close. UI auto-reconnects to running sync on page load. If sync was interrupted (server restart/crash), UI auto-resumes with `resume=true` on next page load (skips completed companies).
+- **Smart sync**: FETCH button uses "smart" mode — gets synced IDs from DB, paginates live OfficeRnD API (`?status=active&$limit=50`, ~12 pages, ~1s), compares IDs to find exact new companies. If none new, reports "Already up to date". If new found, saves them to DB and syncs only their 13 per-company endpoints (no Phase 1 re-fetch).
+- **Auto-run**: On page load, automatically triggers smart sync check if idle or interrupted. No manual click needed to verify data is current.
+- **Auto-sync scheduler**: Background thread runs smart sync every hour automatically (no browser needed). Skips if a sync is already running. Started at API startup via `start_auto_sync_scheduler()` in `sync_routes.py`.
+- **Stale progress reset**: On API startup, `reset_stale_progress()` resets any leftover "running" progress to "idle" (no sync thread exists at startup). Prevents UI from reconnecting to a dead sync.
+- **Interrupted sync recovery**: If sync was interrupted (server restart/crash), UI runs smart check (not full re-sync) on next page load. Finds only new companies and syncs those.
+- **Export**: EXPORT button downloads a full `pg_dump` SQL backup (~66MB) with schema + data. Real browser download with `Content-Disposition: attachment`.
+- **Background sync**: Sync runs in a daemon thread on the server, survives browser close. UI auto-reconnects to running sync on page load.
 - **Duplicate prevention**: Server rejects new sync if one is already running (`status: already_running`)
 - **SHOW/TERMINAL toggle**: UI switches between terminal log view and per-company results table
 - **PhaseTracker**: Shows 2 sync phases as progress bars above the results table. Phase 1 "Sync All Data" covers global endpoints (22) + all active companies (580) — complete only when every company is synced. Phase 2 "Dependent" covers payment docs (~14,828) + assignments (~820) with SyncJob tracking for real-time counts (updates every 10 items). Clicking either phase expands endpoint details. Phase 1 also shows a globals sub-indicator (e.g., "Global endpoints: 22/22 ✓"). Phase 2 correctly shows "completed" even while Phase 1 re-runs. Polls every 3s during sync.

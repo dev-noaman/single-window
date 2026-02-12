@@ -2,143 +2,128 @@ name: Deploy to VPS
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
+    timeout-minutes: 30
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-      
-      - name: Deploy to VPS
-        uses: appleboy/ssh-action@master
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USERNAME }}
-          password: ${{ secrets.VPS_PASSWORD }}
-          command_timeout: 45m
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASS }}
+          command_timeout: 25m
           script: |
-            set -ex
-            
-            # --- 1. SYSTEM PREPARATION ---
-            echo "--- Installing Host Dependencies ---"
-            apt-get update
-            apt-get install -y nginx certbot python3-certbot-nginx ufw curl net-tools
+            set -e
+            REPO_DIR="/root/scrapers"
+            REPO_URL="https://${{ secrets.GH_PAT }}@github.com/dev-noaman/single.git"
 
-            # --- 2. FIREWALL (Host level) ---
-            echo "--- Configuring Firewall ---"
-            ufw allow 80/tcp || true
-            ufw allow 443/tcp || true
-            ufw allow 22/tcp || true
+            echo "=========================================="
+            echo "  Deploying to VPS"
+            echo "=========================================="
 
-            # --- 3. DOCKER SETUP ---
-            if ! command -v docker &> /dev/null; then
-                curl -fsSL https://get.docker.com -o get-docker.sh
-                sh get-docker.sh
-                apt-get install -y docker-compose-plugin
-            fi
-            systemctl enable --now docker
-
-            # --- 4. REPO SYNC ---
-            mkdir -p /root/scrapers
-            cd /root/scrapers
-            if [ -d ".git" ]; then
-                git remote set-url origin https://github.com/dev-noaman/scrapers.git
-                git fetch origin main
-                git reset --hard origin/main
+            # --- Clone or pull the repo ---
+            if [ -d "$REPO_DIR/.git" ]; then
+              echo "[*] Pulling latest code..."
+              cd "$REPO_DIR"
+              git fetch origin main
+              git reset --hard origin/main
             else
-                cd /root
-                rm -rf scrapers
-                git clone https://github.com/dev-noaman/scrapers.git
-                cd scrapers
+              echo "[*] Cloning repository..."
+              rm -rf "$REPO_DIR"
+              git clone "$REPO_URL" "$REPO_DIR"
+              cd "$REPO_DIR"
             fi
 
-            # --- 5. DOCKER DEPLOYMENT ---
-            DOCKER_COMPOSE="docker compose"
-            if ! $DOCKER_COMPOSE version > /dev/null 2>&1; then DOCKER_COMPOSE="docker-compose"; fi
+            echo "[OK] Code is up to date"
 
-            echo "--- Deploying Containers ---"
-            cd /root/scrapers/API-php
-            $DOCKER_COMPOSE down --remove-orphans || true
-            $DOCKER_COMPOSE up -d --build
+            # --- Docker services ---
+            DOCKER_SERVICES=("API-php" "API-node" "API-CR" "Portal" "scrape-sw-codes" "scrape-sw-gsheet")
 
-            cd /root/scrapers/API-node
-            $DOCKER_COMPOSE down --remove-orphans || true
-            $DOCKER_COMPOSE up -d --build
+            for svc in "${DOCKER_SERVICES[@]}"; do
+              if [ -f "$REPO_DIR/$svc/docker-compose.yml" ]; then
+                echo ""
+                echo "[*] Deploying $svc..."
+                cd "$REPO_DIR/$svc"
+                docker compose down --remove-orphans 2>/dev/null || true
+                docker compose build --quiet
+                docker compose up -d
+                echo "[OK] $svc deployed"
+              else
+                echo "[SKIP] $svc - no docker-compose.yml"
+              fi
+            done
 
-            cd /root/scrapers/Portal
-            $DOCKER_COMPOSE down --remove-orphans || true
-            $DOCKER_COMPOSE up -d --build
+            # --- Host service: officernd-api (Python + PM2) ---
+            echo ""
+            echo "[*] Deploying officernd-api..."
+            cd "$REPO_DIR/officernd"
 
-            # --- 6. HOST NGINX CONFIGURATION ---
-            echo "--- Writing Host Nginx Config ---"
-            cat > /etc/nginx/sites-available/noaman.cloud << 'EOF'
-            server {
-                listen 80 default_server;
-                server_name noaman.cloud www.noaman.cloud;
-
-                # Welcome Page
-                location / {
-                    proxy_pass http://127.0.0.1:8082/;
-                    proxy_http_version 1.1;
-                    proxy_set_header Upgrade $http_upgrade;
-                    proxy_set_header Connection 'upgrade';
-                    proxy_set_header Host $host;
-                    proxy_cache_bypass $http_upgrade;
-                }
-
-                # Python Scraper API
-                location /api-php/ {
-                    proxy_pass http://127.0.0.1:8080/;
-                    proxy_http_version 1.1;
-                    proxy_set_header Upgrade $http_upgrade;
-                    proxy_set_header Connection 'upgrade';
-                    proxy_set_header Host $host;
-                    proxy_cache_bypass $http_upgrade;
-                    proxy_read_timeout 300;
-                }
-
-                # Node Scraper API
-                location /api-node/ {
-                    proxy_pass http://127.0.0.1:8081/;
-                    proxy_http_version 1.1;
-                    proxy_set_header Upgrade $http_upgrade;
-                    proxy_set_header Connection 'upgrade';
-                    proxy_set_header Host $host;
-                    proxy_cache_bypass $http_upgrade;
-                    proxy_read_timeout 300;
-                }
-            }
-            EOF
-            
-            sed -i 's/^            //' /etc/nginx/sites-available/noaman.cloud
-            ln -sf /etc/nginx/sites-available/noaman.cloud /etc/nginx/sites-enabled/
-            rm -f /etc/nginx/sites-enabled/default || true
-            nginx -t
-            systemctl restart nginx
-
-            # --- 7. AUTOMATED SSL (Optional to avoid crashing deployment) ---
-            echo "--- Certbot SSL Setup ---"
-            # We use '|| true' so that the deployment stays GREEN even if SSL fails (user might need to fix external firewall)
-            if [ ! -d "/etc/letsencrypt/live/noaman.cloud" ]; then
-                echo "Requesting new certificate..."
-                certbot --nginx -d noaman.cloud --non-interactive --agree-tos -m noaman.cloud@gmail.com || echo "WARNING: SSL Challenge failed. This usually means Port 80/443 is blocked in your VPS Provider Panel."
+            # Preserve .env (don't overwrite production config)
+            if [ ! -f config/.env ]; then
+              echo "[WARN] officernd config/.env not found - create it manually"
             else
-                echo "Updating/Reinstalling existing certificate..."
-                certbot --nginx -d noaman.cloud --non-interactive --reinstall || echo "Reinstall skipped"
+              # Fix host.docker.internal for host services
+              sed -i 's/host\.docker\.internal/localhost/g' config/.env
             fi
 
-            # --- 8. VERIFICATION ---
-            sleep 5
-            docker ps
-            netstat -tulpn | grep nginx || true
-            curl -sI http://localhost:8080/health || echo "API-php internal failure"
-            curl -sI http://localhost:8081/health || echo "API-node internal failure"
-            curl -sI http://localhost:8082/ || echo "Portal internal failure"
+            # Install Python dependencies
+            if [ -f config/requirements.txt ]; then
+              pip3 install --break-system-packages -q -r config/requirements.txt 2>&1 | tail -3
+            fi
 
-            echo "--- DEPLOYMENT FINISHED ---"
-            echo "NOTE: If HTTPS is not working, check your VPS Provider Control Panel (Hostinger/AWS/etc) and allow Port 80 and 443."
+            # Auto-migrate database
+            if [ -f "$REPO_DIR/scripts/setup-databases.py" ]; then
+              python3 "$REPO_DIR/scripts/setup-databases.py" "$REPO_DIR/officernd" 2>&1 || echo "[WARN] DB setup had warnings (tables may exist)"
+            fi
+
+            # Restart PM2 process
+            pm2 delete officernd-api 2>/dev/null || true
+            pm2 start "uvicorn api.main:app --host 0.0.0.0 --port 8087" --name officernd-api
+            echo "[OK] officernd-api deployed"
+
+            # --- Host service: officernd-bff (NestJS + React + PM2) ---
+            echo ""
+            echo "[*] Deploying officernd-bff..."
+            cd "$REPO_DIR/officernd/bff"
+
+            # Preserve .env
+            if [ ! -f .env ]; then
+              printf 'OFFICERND_API_URL=http://localhost:8087\nOFFICERND_ORG_SLUG=arafat-business-centers\nPORT=8088\n' > .env
+              echo "[INFO] Created default .env for officernd-bff"
+            fi
+
+            # Install and build
+            npm install --loglevel=error --no-audit --no-fund 2>&1 | tail -3
+            cd frontend && npm install --loglevel=error --no-audit --no-fund 2>&1 | tail -3 && npm run build && cd ..
+            npm run build
+
+            # Restart PM2 process
+            pm2 delete officernd-bff 2>/dev/null || true
+            pm2 start dist/main.js --name officernd-bff
+            echo "[OK] officernd-bff deployed"
+
+            # --- Save PM2 process list ---
+            pm2 save
+
+            # --- Nginx reload ---
+            if [ -f "$REPO_DIR/Portal/noaman.cloud.nginx.conf" ]; then
+              cp "$REPO_DIR/Portal/noaman.cloud.nginx.conf" /etc/nginx/sites-available/noaman.cloud
+              nginx -t 2>&1 && systemctl reload nginx && echo "[OK] Nginx reloaded" || echo "[WARN] Nginx config test failed"
+            fi
+
+            # --- Cleanup ---
+            docker system prune -f --volumes 2>/dev/null || true
+
+            echo ""
+            echo "=========================================="
+            echo "  Deployment complete!"
+            echo "=========================================="
+            echo "  Docker: docker ps"
+            echo "  PM2:    pm2 list"
+            echo "=========================================="

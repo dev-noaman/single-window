@@ -172,6 +172,14 @@ def create_app(config: Optional[AppConfig] = None) -> FastAPI:
     except Exception as e:
         logger.warning(f"Schema check failed (non-fatal): {e}")
 
+    # Reset stale progress file on startup (no sync thread exists yet)
+    from sync.progress import reset_stale_progress
+    reset_stale_progress()
+
+    # Start auto-sync scheduler (smart sync every hour in background)
+    from api.sync_routes import start_auto_sync_scheduler
+    start_auto_sync_scheduler()
+
     logger.info(f"FastAPI application created for organization: {org_slug}")
     return app
 

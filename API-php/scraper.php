@@ -4,6 +4,7 @@
 // Usage: php scraper.php {bacode}
 
 header('Content-Type: application/json');
+header('Access-Control-Allow-Origin: *');
 
 // Get code from query parameter or CLI
 if (php_sapi_name() === 'cli') {

@@ -4,9 +4,12 @@ FROM python:3.11-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     php-fpm \
     php-cli \
+    php-curl \
     nginx \
     curl \
     ca-certificates \
+    chromium \
+    chromium-driver \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -15,6 +18,11 @@ WORKDIR /app
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# SeleniumBase (uc_driver) needs a writable drivers directory at runtime.
+# Otherwise it fails with: Permission denied .../seleniumbase/drivers/uc_driver
+RUN python3 -c "import os,site; p=os.path.join(site.getsitepackages()[0],'seleniumbase','drivers'); os.makedirs(p,exist_ok=True); print(p)" \
+  && chmod -R 777 /usr/local/lib/python3.11/site-packages/seleniumbase/drivers || true
 
 # Set Playwright browser path
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
@@ -27,7 +35,6 @@ RUN playwright install-deps chromium
 # Copy application files
 COPY scraper.py .
 COPY scraper.php .
-COPY GUIDE.MD .
 
 # Copy Nginx configuration
 COPY nginx.conf /etc/nginx/sites-available/default

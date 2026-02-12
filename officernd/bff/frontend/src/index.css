@@ -1,0 +1,244 @@
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes blink {
+  0%, 50% {
+    opacity: 1;
+  }
+  51%, 100% {
+    opacity: 0;
+  }
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Courier New', Courier, monospace;
+  background-color: #0a0a0a;
+  color: #e5e7eb;
+  line-height: 1.6;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
+
+/* Button hover effects */
+button {
+  transition: all 0.2s ease;
+}
+
+button:disabled {
+  cursor: not-allowed !important;
+}
+
+/* Terminal styling */
+.terminal-container {
+  background: linear-gradient(180deg, #0d0d0d 0%, #1a1a1a 100%);
+  border: 1px solid #2a2a2a;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.terminal-line {
+  animation: slideIn 0.3s ease-out;
+  border-bottom: 1px solid #1f1f1f;
+}
+
+.terminal-line:hover {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+/* Status indicators */
+.status-online {
+  color: #22c55e;
+  text-shadow: 0 0 10px rgba(34, 197, 94, 0.3);
+}
+
+.status-offline {
+  color: #ef4444;
+  text-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
+}
+
+/* Loading spinner */
+.spinner {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Cursor blink */
+.cursor-blink {
+  animation: blink 1s step-end infinite;
+}
+
+/* ===== Responsive styles ===== */
+
+/* Mobile: stack header, shrink fonts, full-width phases */
+@media (max-width: 768px) {
+  .app-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px !important;
+    padding-bottom: 16px !important;
+  }
+
+  .app-header-right {
+    width: 100%;
+    flex-direction: column !important;
+    gap: 10px !important;
+  }
+
+  .app-header-buttons {
+    display: flex;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .app-header-buttons button {
+    flex: 1;
+    padding: 8px 12px !important;
+    font-size: 12px !important;
+  }
+
+  .app-title {
+    font-size: 20px !important;
+  }
+
+  .status-bar {
+    gap: 10px !important;
+    font-size: 11px !important;
+  }
+
+  .phase-bars {
+    flex-direction: column !important;
+  }
+
+  .phase-card {
+    flex: 1 !important;
+  }
+
+  .results-scroll {
+    max-height: 60vh !important;
+  }
+
+  .results-table {
+    font-size: 11px !important;
+  }
+
+  .results-table th,
+  .results-table td {
+    padding: 4px 6px !important;
+  }
+
+  .col-hide-mobile {
+    display: none !important;
+  }
+
+  .company-name-cell {
+    max-width: 140px !important;
+  }
+
+  .terminal-box {
+    height: calc(100vh - 200px) !important;
+    padding: 12px !important;
+    font-size: 11px !important;
+  }
+
+  .progress-line {
+    gap: 6px !important;
+    font-size: 11px !important;
+  }
+
+  .progress-timestamp {
+    min-width: 70px !important;
+    font-size: 10px !important;
+  }
+
+  .progress-type {
+    min-width: 60px !important;
+    font-size: 10px !important;
+  }
+
+  .results-footer {
+    flex-direction: column !important;
+    gap: 4px !important;
+    font-size: 10px !important;
+  }
+
+  .phase-endpoint-table {
+    font-size: 10px !important;
+  }
+
+  .phase-endpoint-table th,
+  .phase-endpoint-table td {
+    padding: 3px 6px !important;
+  }
+}
+
+/* Small phones */
+@media (max-width: 480px) {
+  .app-container {
+    padding: 12px !important;
+  }
+
+  .app-title {
+    font-size: 16px !important;
+    letter-spacing: 1px !important;
+  }
+
+  .status-bar {
+    gap: 6px 12px !important;
+    font-size: 10px !important;
+  }
+
+  .company-name-cell {
+    max-width: 100px !important;
+  }
+
+  .terminal-box {
+    height: calc(100vh - 180px) !important;
+    padding: 8px !important;
+    font-size: 10px !important;
+  }
+
+  .progress-timestamp {
+    display: none !important;
+  }
+}

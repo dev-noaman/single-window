@@ -1,0 +1,58 @@
+# PostgreSQL runs on HOST (not in Docker). Same host as officernd (no conflict: different DBs).
+# - officernd uses: database 'officernd', user 'officernd_user'
+# - scrape-sw-codes uses: database 'codesdb', user 'codesuser', password 'CodesPass2024'
+# Ensure host has PostgreSQL 16+ with both DBs. Run init.sql once: psql -U codesuser -d codesdb -f init.sql
+# Containers connect via host.docker.internal:5432
+
+services:
+  fetch_codes:
+    build: .
+    container_name: SW_CODES_PYTHON
+    restart: "no"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      DATABASE_URL: postgresql://codesuser:CodesPass2024@host.docker.internal:5432/codesdb
+      PYTHONUNBUFFERED: 1
+    volumes:
+      - /tmp:/tmp  # Share /tmp for progress file
+
+  web:
+    image: php:8.2-cli
+    container_name: SW_CODES_WEB
+    restart: unless-stopped
+    working_dir: /app
+    user: "0:0"  # Run as root to access Docker socket
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      PGHOST: host.docker.internal
+      PGPORT: "5432"
+      PGDATABASE: codesdb
+      PGUSER: codesuser
+      PGPASSWORD: CodesPass2024
+    volumes:
+      - ./trigger-fetch-codes.php:/app/trigger-fetch-codes.php
+      - ./check-update.php:/app/check-update.php
+      - ./progress.php:/app/progress.php
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+      - /usr/bin/docker:/usr/bin/docker:ro
+      - /tmp:/tmp  # Share /tmp for progress file
+    ports:
+      - "8084:8000"
+    command: sh -c "apt-get update && apt-get install -y libpq-dev && docker-php-ext-install pdo pdo_pgsql && php -S 0.0.0.0:8000 -t /app"
+    depends_on:
+      - fetch_codes
+
+  cron:
+    build:
+      context: .
+      dockerfile: Dockerfile.cron
+    container_name: SW_CODES_CRON
+    restart: unless-stopped
+    depends_on:
+      - web
+    environment:
+      TZ: Asia/Qatar
+    networks:
+      - default

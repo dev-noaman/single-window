@@ -1,0 +1,60 @@
+services:
+  scraper:
+    build: .
+    image: scraper:latest
+    container_name: SW_GSHEET
+    volumes:
+      - ./drive:/app/drive
+      - ./output:/app/output
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DISPLAY=:99
+    command: python scrape_codes.py
+
+  gsheet-scraper-en:
+    build: .
+    image: scraper:latest
+    container_name: GSHEET_SCRAPER_EN
+    volumes:
+      - ./drive:/app/drive:ro
+      - /tmp:/tmp
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DISPLAY=:99
+      - SCRAPER_LANGUAGE=en
+    command: python scrape-EN.py
+
+  gsheet-scraper-ar:
+    build: .
+    image: scraper:latest
+    container_name: GSHEET_SCRAPER_AR
+    volumes:
+      - ./drive:/app/drive:ro
+      - /tmp:/tmp
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DISPLAY=:99
+      - SCRAPER_LANGUAGE=ar
+    command: python scrape-AR.py
+
+  web:
+    image: php:8.2-cli
+    container_name: GSHEET_SCRAPER_WEB
+    restart: unless-stopped
+    working_dir: /app
+    user: "0:0"  # Run as root to access Docker socket
+    volumes:
+      - ./trigger-scrape-en.php:/app/trigger-scrape-en.php
+      - ./trigger-scrape-ar.php:/app/trigger-scrape-ar.php
+      - ./progress-en.php:/app/progress-en.php
+      - ./progress-ar.php:/app/progress-ar.php
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+      - /usr/bin/docker:/usr/bin/docker:ro
+      - /tmp:/tmp  # Share /tmp for progress files
+      - ./drive:/app/drive:ro  # Access to Google credentials
+    ports:
+      - "8085:8000"
+    command: php -S 0.0.0.0:8000 -t /app

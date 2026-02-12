@@ -4,30 +4,39 @@ Sync management endpoints for OfficeRnD API Offline Clone.
 This module provides FastAPI routes for sync management:
 - GET /sync/status (returns sync_jobs summary)
 - GET /sync/progress (returns real-time progress from shared file)
-- POST /sync/run (triggers sync in background thread - full or incremental)
+- POST /sync/run (triggers sync in background thread - full, incremental, or smart)
+- GET /sync/export (export all DB tables as ZIP of CSVs)
 """
 
 import asyncio
+import csv
+import io
+import json
 import logging
 import threading
+import time
+import zipfile
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from api.config import AppConfig
-from sqlalchemy import func
-from db.engine import session_context
+from sqlalchemy import func, inspect as sa_inspect, text
+from db.engine import get_engine, session_context
 from db.models import Company, SyncJob, SyncJobCompany
 from sync.run import sync_endpoint, sync_all_endpoints
 from sync.run_by_company import GLOBAL_ENDPOINTS, COMPANY_ENDPOINTS
-from sync.progress import read_progress
+from sync.progress import read_progress, update_progress
 
 logger = logging.getLogger(__name__)
 
 # Create router
 router = APIRouter(prefix="/sync", tags=["Sync Management"])
+
+AUTO_SYNC_INTERVAL = 3600  # seconds (1 hour)
 
 
 class SyncRequest(BaseModel):
@@ -306,6 +315,49 @@ async def get_sync_progress() -> Dict[str, Any]:
     return read_progress()
 
 
+@router.get("/export")
+async def export_database():
+    """Export full PostgreSQL database backup using pg_dump."""
+    import subprocess
+    from urllib.parse import urlparse
+
+    config = AppConfig.from_env()
+    db_url = config.database.database_url
+    parsed = urlparse(db_url)
+
+    env = {
+        "PGPASSWORD": parsed.password or "",
+        "PATH": "/usr/bin:/usr/local/bin:/bin",
+    }
+    host = parsed.hostname or "localhost"
+    port = str(parsed.port or 5432)
+    dbname = parsed.path.lstrip("/")
+    user = parsed.username or "officernd_user"
+
+    try:
+        result = subprocess.run(
+            ["pg_dump", "-h", host, "-p", port, "-U", user, "-d", dbname,
+             "--no-owner", "--no-acl", "--clean", "--if-exists"],
+            capture_output=True,
+            env=env,
+            timeout=120,
+        )
+        if result.returncode != 0:
+            raise Exception(result.stderr.decode().strip())
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail="pg_dump not found on server")
+
+    sql_bytes = result.stdout
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"officernd-backup-{timestamp}.sql"
+
+    return StreamingResponse(
+        io.BytesIO(sql_bytes),
+        media_type="application/sql",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.post("/run")
 async def trigger_sync(
     request: SyncRequest,
@@ -348,33 +400,18 @@ async def trigger_sync(
     def run_sync():
         with OfficeRnDClient(config) as client:
             try:
-                if request.mode == "incremental":
-                    # Run the full 3-phase orchestrator in incremental mode
+                if request.mode == "smart":
+                    _run_smart_sync(client)
+                elif request.mode == "incremental":
                     from sync.run_by_company import run_full_sync
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    try:
-                        loop.run_until_complete(
-                            run_full_sync(client, incremental=True)
-                        )
-                    finally:
-                        loop.close()
+                    _run_async(run_full_sync(client, incremental=True))
                 elif request.endpoint:
                     sync_endpoint(client, request.endpoint, request.resume)
                 else:
-                    # Full sync via 3-phase orchestrator
                     from sync.run_by_company import run_full_sync
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    try:
-                        loop.run_until_complete(
-                            run_full_sync(client, resume=request.resume)
-                        )
-                    finally:
-                        loop.close()
+                    _run_async(run_full_sync(client, resume=request.resume))
             except Exception as e:
                 logger.error(f"Sync failed: {e}")
-                from sync.progress import update_progress
                 update_progress(
                     phase="Error",
                     status="error",
@@ -394,3 +431,162 @@ async def trigger_sync(
         "endpoint": request.endpoint or "all",
         "message": "Sync operation started in background thread",
     }
+
+
+# ─── Module-level helpers (used by both trigger_sync and auto-scheduler) ───
+
+
+def _run_async(coro):
+    """Helper to run async coroutine in a new event loop."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
+def _fetch_live_active(client, synced_ids: set):
+    """Fetch active companies from live OfficeRnD API.
+
+    Compares each company ID against synced_ids during pagination.
+    Returns (total_count, list_of_new_company_objects).
+    Only collects full objects for NEW companies (not yet synced).
+    """
+    total_count = 0
+    new_companies = []
+    cursor = None
+
+    while True:
+        params = {"status": "active", "$limit": "50"}
+        if cursor:
+            params["$cursorNext"] = cursor
+
+        resp = client.get("companies", params)
+        if resp.error:
+            raise Exception(f"API error: {resp.error}")
+
+        payload = resp.payload
+        if not isinstance(payload, dict):
+            break
+
+        results = payload.get("results", [])
+        total_count += len(results)
+
+        for company in results:
+            cid = company.get("_id")
+            if cid and cid not in synced_ids:
+                new_companies.append(company)
+
+        cursor = payload.get("cursorNext")
+        if not cursor or not results:
+            break
+
+    return total_count, new_companies
+
+
+def _run_smart_sync(client):
+    """Smart sync: fetch live active, compare IDs with synced, sync only new."""
+    update_progress(
+        phase="Checking",
+        status="running",
+        message="Checking OfficeRnD for new companies...",
+    )
+
+    # Step 1: Get synced company IDs from DB
+    with session_context() as session:
+        synced_ids = {
+            row[0] for row in
+            session.query(SyncJobCompany.company_id)
+            .filter(SyncJobCompany.status.in_(["completed", "partial"]))
+            .all()
+        }
+
+    # Step 2: Fetch active companies from live API, identify new ones
+    t0 = time.time()
+    try:
+        live_count, new_companies = _fetch_live_active(client, synced_ids)
+    except Exception as e:
+        update_progress(
+            phase="Error",
+            status="error",
+            error=str(e),
+            message=f"API check failed: {e}",
+        )
+        return
+    elapsed = time.time() - t0
+
+    # Step 3: No new companies
+    if not new_companies:
+        update_progress(
+            phase="Complete",
+            status="completed",
+            message=f"Already up to date ({len(synced_ids)}/{live_count} active companies synced) checked in {elapsed:.1f}s",
+        )
+        logger.info(f"Smart sync: up to date ({len(synced_ids)}/{live_count}) in {elapsed:.1f}s")
+        return
+
+    # Step 4: Show which companies are new
+    new_names = ", ".join(
+        (c.get("name") or c.get("_id", "?"))[:30] for c in new_companies[:3]
+    )
+    if len(new_companies) > 3:
+        new_names += f" +{len(new_companies) - 3} more"
+
+    logger.info(f"Smart sync: {len(new_companies)} new companies ({new_names}) checked in {elapsed:.1f}s")
+    update_progress(
+        phase="Starting",
+        status="running",
+        message=f"Found {len(new_companies)} new: {new_names}",
+    )
+
+    # Step 5: Save new companies to DB (so per-company sync can find them)
+    from sync.writer import upsert_records
+    upsert_records("companies", new_companies)
+    logger.info(f"Saved {len(new_companies)} new companies to DB")
+
+    # Step 6: Sync per-company endpoints for each new company only
+    from sync.run_by_company import run_phase2
+
+    async def _sync_new():
+        total = len(new_companies)
+        for idx, company in enumerate(new_companies, 1):
+            cid = company["_id"]
+            await run_phase2(client, company_id=cid)
+
+        update_progress(
+            phase="Complete",
+            status="completed",
+            message=f"Synced {total} new companies in {time.time() - t0:.1f}s",
+        )
+
+    _run_async(_sync_new())
+
+
+# ─── Auto-sync scheduler (runs smart sync every hour in background) ───
+
+
+def start_auto_sync_scheduler():
+    """Start a daemon thread that runs smart sync every AUTO_SYNC_INTERVAL seconds."""
+
+    def _scheduler_loop():
+        logger.info(f"Auto-sync scheduler started (interval: {AUTO_SYNC_INTERVAL}s)")
+        while True:
+            time.sleep(AUTO_SYNC_INTERVAL)
+            # Skip if a sync is already running
+            current = read_progress()
+            if current.get("status") == "running":
+                logger.info("Auto-sync: skipped (sync already running)")
+                continue
+            logger.info("Auto-sync: starting scheduled smart sync...")
+            try:
+                config = AppConfig.from_env()
+                from api.client import OfficeRnDClient
+                with OfficeRnDClient(config) as client:
+                    _run_smart_sync(client)
+            except Exception as e:
+                logger.error(f"Auto-sync failed: {e}")
+
+    thread = threading.Thread(target=_scheduler_loop, daemon=True, name="auto-sync-scheduler")
+    thread.start()
+    return thread

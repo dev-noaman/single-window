@@ -1,14 +1,14 @@
-version: '3.8'
-
 services:
   portal:
     build: .
-    container_name: web-portal
+    image: portal:latest
+    container_name: PORTAL
     ports:
       - "8082:80"
     restart: unless-stopped
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost/" ]
+      test: [ "CMD", "curl", "-f", "http://localhost/health", "&&", "curl", "-f", "http://localhost/php-health" ]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 30s

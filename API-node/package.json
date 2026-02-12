@@ -1,20 +1,33 @@
 {
-    "name": "qatar-investor-scraper",
-    "version": "1.0.0",
-    "description": "Qatar Investor Portal scraper for Hostinger",
-    "main": "scraper.js",
-    "scripts": {
-        "start": "node scraper.js",
-        "test": "node scraper.js 013001"
-    },
-    "keywords": [
-        "scraper",
-        "qatar",
-        "investor"
-    ],
-    "author": "",
-    "license": "MIT",
-    "dependencies": {
-        "puppeteer": "^24.0.0"
-    }
+  "name": "api-node",
+  "version": "1.0.0",
+  "description": "Qatar business data scraper API",
+  "main": "server.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "node test-json-only.js",
+    "start": "node server.js",
+    "dev": "npm run build && npm start"
+  },
+  "keywords": [
+    "web-scraping",
+    "qatar-government",
+    "business-data",
+    "playwright"
+  ],
+  "author": "Business Data Scraper Team",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "playwright": "^1.40.0",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  }
 }

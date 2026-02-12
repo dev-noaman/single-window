@@ -48,12 +48,25 @@ sync/pipeline.py (ETL per endpoint)
 | `sync/json_writer.py` | Organized JSON file storage |
 | `sync/writer.py` | DB upsert with batch support + endpoint->model mapping |
 | `sync/fetcher.py` | Paginated API fetcher with cursor support |
+| `sync/progress.py` | Read/write `/tmp/officernd_sync_progress.json` for real-time UI + startup stale reset |
+| `api/main.py` | FastAPI app factory, registers all route modules + sync_routes + calls reset_stale_progress() |
+| `api/auth.py` | API key authentication middleware |
 | `api/client.py` | HTTP client with OAuth + auto token refresh |
 | `api/config.py` | Config from config/.env |
 | `api/models.py` | Endpoint definitions (43 endpoints in 6 groups) |
+| `api/sync_routes.py` | Sync management: status, progress, phases, smart check, pg_dump export, auto-sync scheduler |
+| `api/active.js` | Standalone Node.js utility to count live active companies (~1s) |
 | `api/routes/__init__.py` | Shared helpers: paginated_query, get_single, apply_filters |
+| `api/routes/community.py` | /members, /companies, /visitors, /opportunities, /passes |
+| `api/routes/space.py` | /resources, /resource-types, /bookings, /assignments, /locations, /floors, /amenities |
+| `api/routes/collaboration.py` | /posts, /events, /tickets, /ticket-options |
+| `api/routes/billing.py` | /payments, /charges, /credits, /fees, /memberships, /plans, /contracts, /benefits, etc. |
+| `api/routes/visits.py` | /visits, /checkins |
+| `api/routes/settings.py` | /webhooks, /billing-settings, /custom-properties, /secondary-currencies, etc. |
 | `db/models.py` | SQLAlchemy ORM models (45 tables, ALL columns nullable) |
-| `db/engine.py` | PostgreSQL connection pool |
+| `db/engine.py` | PostgreSQL connection pool + ensure_schema() migration |
+
+All `.py` files in `api/` are actively imported. `api/active.js` is a standalone test utility (not imported by the app).
 
 ## Important: Company IDs & Pagination
 
@@ -93,8 +106,9 @@ python -m sync.run_by_company --concurrency 10
 
 ### Sync Modes
 
-| Mode | Command | What it does |
+| Mode | Command/Trigger | What it does |
 |------|---------|-------------|
+| **Smart** | UI FETCH button / auto-run on page load / interrupted recovery | Gets synced IDs from DB, then paginates live API with `?status=active&$limit=50` (~12 pages, ~1s). Compares IDs to find exact new companies. If none → "Already up to date". If new → saves new companies to DB, syncs only their 13 per-company endpoints (no Phase 1 re-fetch). Also used when recovering from interrupted sync (replaces old full-resume behavior). |
 | **Full** | `python -m sync.run_by_company` | Phase 1 (all global) + Phase 2 (all active companies) + Backfill + Phase 3 |
 | **Incremental** | `--incremental` | Re-fetches /companies, syncs only NEW active companies + all 13 endpoints per new company + Backfill + Phase 3 |
 | **Resume** | `--resume` | Retries companies that failed or weren't reached in a previous full sync |
@@ -211,6 +225,9 @@ All routes served via FastAPI at `/api/v2/organizations/{orgSlug}/...`
 - **Deduplication**: pagination overlaps handled by _id dedup in fetcher
 - **Partial data kept**: if fetch gets some records before error, saves them
 - **Resume mode**: `--resume` skips completed companies, retries failed ones
+- **Stale progress reset**: On API startup, `reset_stale_progress()` in `sync/progress.py` resets any leftover "running" status to "idle" (no sync thread exists at startup). Called from `api/main.py` `create_app()`.
+- **Interrupted recovery**: Frontend `useSync.ts` detects "interrupted" status and runs smart check (not full re-sync). This finds only new companies and syncs those, avoiding unnecessary full re-syncs.
+- **Auto-sync scheduler**: `start_auto_sync_scheduler()` in `sync_routes.py` starts a daemon thread at API startup that runs smart sync every hour (`AUTO_SYNC_INTERVAL = 3600`). Skips if sync already running. No browser needed.
 - **Logs**: config/sync.log for full audit trail
 
 ## Data Storage Layout
@@ -230,7 +247,7 @@ data/
 |   +-- ...
 +-- payments_documents/{id}/    # Documents per payment ID
 +-- assignments/{id}/           # Assignments per membership ID
-+-- exports/                    # CSV exports of all DB tables
++-- (export via /sync/export returns pg_dump SQL backup, not stored on disk)
 ```
 
 ## Environment Variables (config/.env)
@@ -259,3 +276,6 @@ DATABASE_URL=postgresql://localhost:5432/officernd
 - Company IDs come from DB (Phase 1), NOT from ID.csv (which has member IDs)
 - Default status filter is 'active' (use --status all to override)
 - Pagination uses `$cursorNext` query param (with $ prefix), NOT `cursorNext`
+- Live OfficeRnD API supports `status=active` filter and `$limit=50` (with $ prefix) for companies
+- Live API does NOT support `limit` (without $) — returns 400 "property limit should not exist"
+- Live API does NOT have `/companies/count` endpoint — returns 404 (treats "count" as company ID)

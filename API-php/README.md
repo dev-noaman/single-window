@@ -1,32 +1,8 @@
 # API-php Scraper (Python + Playwright)
 
-Docker-ready Qatar Investor Portal scraper using Python and Playwright.
+Qatar Investor Portal scraper using Python and Playwright.
 
-## Quick Start (Docker)
-
-### Build and Run
-```bash
-docker compose up -d --build
-```
-
-### Test the API
-```bash
-# Using curl
-curl "http://localhost:8080/scraper.php?code=013001"
-
-# Using browser
-http://localhost:8080/scraper.php?code=013001
-```
-
-### View Logs
-```bash
-docker compose logs -f
-```
-
-### Stop
-```bash
-docker compose down
-```
+For Docker deployment instructions, see [Docker.md](../Docker.md).
 
 ## API Usage
 
@@ -41,6 +17,7 @@ docker compose down
   "status": "success",
   "data": {
     "activity_code": "013001",
+    "status": "Active",
     "name_en": "Activity Name in English",
     "name_ar": "اسم النشاط بالعربية",
     "locations": "Main Location 1: ...\nSub Location 1: ...\nFee 1: ...",
@@ -65,26 +42,13 @@ playwright install chromium
 
 ### Run Scraper Directly
 ```bash
-# JSON output
 python scraper.py --code 013001 --json
-
-# Visible browser mode
-python scraper.py --code 013001 --visible --json
 ```
 
 ### Run via PHP Wrapper
 ```bash
 php scraper.php 013001
 ```
-
-## Configuration
-
-### Environment Variables
-- `PYTHONIOENCODING=utf-8` - Ensures proper UTF-8 encoding
-
-### Timeout Settings
-- Default timeout: 120 seconds
-- Nginx timeout: 300 seconds (for long-running scrapes)
 
 ## Files
 
@@ -94,24 +58,3 @@ php scraper.php 013001
 - `docker-compose.yml` - Docker Compose setup
 - `nginx.conf` - Nginx web server configuration
 - `docker-entrypoint.sh` - Container startup script
-
-## Deployment
-
-See [DEPLOYMENT.md](../DEPLOYMENT.md) for VPS deployment instructions.
-
-## Troubleshooting
-
-### Container won't start
-```bash
-docker compose logs
-```
-
-### Chromium issues
-```bash
-docker compose build --no-cache
-```
-
-### Permission errors
-```bash
-sudo chown -R $USER:$USER .
-```

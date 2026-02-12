@@ -1,0 +1,4 @@
+seleniumbase>=4.22.0
+gspread
+oauth2client
+playwright>=1.40.0

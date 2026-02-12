@@ -1,11 +1,7 @@
 FROM node:20-slim
 
-# Install system dependencies for Puppeteer/Chrome
+# Install system dependencies for Playwright
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    php-fpm \
-    php-cli \
-    php-curl \
-    nginx \
     curl \
     ca-certificates \
     libasound2 \
@@ -41,8 +37,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxtst6 \
     && rm -rf /var/lib/apt/lists/*
 
-# Set Puppeteer cache path to where the web user expects it
-ENV PUPPETEER_CACHE_DIR=/var/www/.cache/puppeteer
+# Create a non-root user BEFORE installing browsers
+RUN groupadd -r scraper && useradd -r -g scraper -m scraper
+
+# Set Playwright to install browsers in a shared location
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
 
 # Set working directory
 WORKDIR /app
@@ -50,29 +49,34 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install Node.js dependencies
-RUN npm ci --omit=dev
+# Install ALL dependencies (including dev for TypeScript build)
+RUN npm ci
 
-# Install Puppeteer's Chromium into the cache dir
-RUN npx puppeteer browsers install chrome
+# Install Playwright browsers to shared location and make accessible
+RUN npx playwright install chromium \
+    && chmod -R 755 /opt/playwright-browsers
 
 # Copy application files
-COPY scraper.js .
-COPY api.php .
-COPY README.md .
+COPY . .
 
-# Copy Nginx configuration
-COPY nginx.conf /etc/nginx/sites-available/default
+# Build TypeScript
+RUN npm run build
 
-# Create folders and set permissions
-RUN mkdir -p /run/php /var/www/.cache/puppeteer && \
-    chown -R www-data:www-data /app /var/www/.cache
+# Remove dev dependencies after build to reduce image size
+RUN npm prune --omit=dev
 
-# Expose port
-EXPOSE 80
+# Set ownership of app directory
+RUN chown -R scraper:scraper /app
 
-# Start script
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
+# Switch to non-root user
+USER scraper
 
-CMD ["/docker-entrypoint.sh"]
+# Expose port (we'll use 3000 internally and map it externally)
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:3000/health || exit 1
+
+# Default command runs the HTTP server
+CMD ["npm", "start"]

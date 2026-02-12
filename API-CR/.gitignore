@@ -1,0 +1,14 @@
+# Environment files
+.env
+data/.env
+
+# Cache files
+data/*.json
+!data/.env.example
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Downloaded PDFs
+*.pdf

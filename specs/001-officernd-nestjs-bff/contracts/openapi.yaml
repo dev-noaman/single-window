@@ -1,0 +1,228 @@
+openapi: 3.0.3
+info:
+  title: OfficeRnD BFF API
+  description: Backend-for-Frontend proxy for the OfficeRnD sync management UI
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8088
+    description: Local development
+
+paths:
+  /api/officernd/status:
+    get:
+      summary: Get combined sync status
+      description: |
+        Calls FastAPI /health and /sync/status, combines results into a single response.
+        Cached for 5 seconds.
+      operationId: getStatus
+      responses:
+        '200':
+          description: Combined sync status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncStatusResponse'
+              examples:
+                online:
+                  summary: API online with sync data
+                  value:
+                    success: true
+                    api_status: online
+                    companies: 579
+                    last_sync: "2026-02-08T15:30:45.123456"
+                    health:
+                      status: healthy
+                      service: officernd-api-clone
+                offline:
+                  summary: API unreachable
+                  value:
+                    success: false
+                    api_status: offline
+                    companies: 0
+                    last_sync: Never
+                    message: "connect ECONNREFUSED 127.0.0.1:8000"
+
+  /api/officernd/progress:
+    get:
+      summary: Get real-time sync progress
+      description: |
+        Proxies to FastAPI /sync/progress. Returns current sync phase, counts, and messages.
+        Cached for 2 seconds.
+      operationId: getProgress
+      responses:
+        '200':
+          description: Current sync progress
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncProgressResponse'
+              examples:
+                running:
+                  summary: Sync in progress
+                  value:
+                    status: running
+                    phase: "Phase 2: Companies"
+                    current: 145
+                    total: 579
+                    endpoint: members
+                    company: Arafat Business Centers
+                    message: "Syncing company 145/579..."
+                    error: null
+                    timestamp: 1707321045.123
+                idle:
+                  summary: No sync running
+                  value:
+                    status: idle
+                    phase: ""
+                    current: 0
+                    total: 0
+                    endpoint: null
+                    company: null
+                    message: "No sync running"
+                    error: null
+                    timestamp: null
+                completed:
+                  summary: Sync finished
+                  value:
+                    status: completed
+                    phase: "Phase 3: Dependent"
+                    current: 17
+                    total: 17
+                    endpoint: null
+                    company: null
+                    message: "Sync completed successfully"
+                    error: null
+                    timestamp: 1707321999.456
+
+  /api/officernd/sync/run:
+    post:
+      summary: Trigger a sync operation
+      description: |
+        Forwards sync request to FastAPI POST /sync/run. Never cached.
+      operationId: triggerSync
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncRunRequest'
+            examples:
+              full:
+                summary: Full sync
+                value:
+                  mode: full
+                  resume: false
+              incremental:
+                summary: Incremental sync
+                value:
+                  mode: incremental
+                  resume: false
+      responses:
+        '200':
+          description: Sync triggered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncRunResponse'
+              examples:
+                success:
+                  value:
+                    success: true
+                    message: Full sync started
+                    data:
+                      status: started
+                      mode: full
+                      endpoint: all
+                      message: Sync operation started in background thread
+        '502':
+          description: FastAPI unreachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncRunResponse'
+              examples:
+                failure:
+                  value:
+                    success: false
+                    message: "Connection failed: connect ECONNREFUSED 127.0.0.1:8000"
+
+components:
+  schemas:
+    SyncStatusResponse:
+      type: object
+      required: [success, api_status, companies, last_sync]
+      properties:
+        success:
+          type: boolean
+        api_status:
+          type: string
+          enum: [online, offline]
+        companies:
+          type: integer
+        last_sync:
+          type: string
+          description: ISO timestamp or "Never"
+        health:
+          type: object
+          nullable: true
+          properties:
+            status:
+              type: string
+            service:
+              type: string
+        message:
+          type: string
+          nullable: true
+
+    SyncProgressResponse:
+      type: object
+      required: [status, phase, current, total]
+      properties:
+        status:
+          type: string
+          enum: [idle, running, completed, error]
+        phase:
+          type: string
+        current:
+          type: integer
+        total:
+          type: integer
+        endpoint:
+          type: string
+          nullable: true
+        company:
+          type: string
+          nullable: true
+        message:
+          type: string
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        timestamp:
+          type: number
+          nullable: true
+
+    SyncRunRequest:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [full, incremental]
+          default: full
+        resume:
+          type: boolean
+          default: false
+
+    SyncRunResponse:
+      type: object
+      required: [success, message]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: object
+          nullable: true

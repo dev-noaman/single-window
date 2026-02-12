@@ -56,6 +56,7 @@ The script returns a JSON object containing the status and scraped data.
   "status": "success",
   "data": {
     "activity_code": "351009",
+    "status": "Active",
     "name_en": "Other activities of Electric power generation...",
     "name_ar": "أنشطة أخرى لتوليد الطاقة الكهربائية...",
     "locations": "Main Location 1: Commercial...",
@@ -65,6 +66,8 @@ The script returns a JSON object containing the status and scraped data.
   "error": null
 }
 ```
+
+**Note**: The `is_manual` field has been removed completely from the system.
 
 ### Error Response
 ```json

@@ -1,14 +1,15 @@
-version: '3.8'
-
 services:
   api-php:
     build: .
-    container_name: api-php-scraper
+    image: api-php:latest
+    container_name: API-PHP
     ports:
       - "8080:80"
     environment:
       - PYTHONIOENCODING=utf-8
       - PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+    volumes:
+      - ./data:/app/data
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost/health" ]

@@ -62,7 +62,9 @@ def create_users_and_databases() -> None:
                 print(f"Failed to create user {user}", file=sys.stderr)
                 sys.exit(1)
         else:
-            print(f"User {user} already exists")
+            # Ensure password matches (user may exist with old password)
+            run_psql_cmd(f"ALTER USER {user} WITH PASSWORD '{password}';")
+            print(f"User {user} already exists (password ensured)")
 
         if not db_exists(db):
             if run_psql_cmd(f"CREATE DATABASE {db} OWNER {user};"):
@@ -72,6 +74,21 @@ def create_users_and_databases() -> None:
                 sys.exit(1)
         else:
             print(f"Database {db} already exists")
+
+    # Create codesdb tables (idempotent)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    init_sql = os.path.join(script_dir, "..", "scrape-sw-codes", "init.sql")
+    if os.path.isfile(init_sql):
+        result = subprocess.run(
+            ["sudo", "-u", "postgres", "psql", "-d", "codesdb", "-f", init_sql],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            print("codesdb tables ready")
+        else:
+            print(f"codesdb table creation warning: {(result.stderr or '').strip()}")
+    else:
+        print("scrape-sw-codes/init.sql not found, skipping codesdb tables")
 
     print("Databases ready")
 

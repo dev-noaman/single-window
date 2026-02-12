@@ -3,6 +3,11 @@ echo "--- ENTRYPOINT STARTING ---"
 mkdir -p /run/php
 chmod 777 /run/php
 
+# Ensure persistent data dir is writable (bind-mounted)
+mkdir -p /app/data
+chmod 777 /app/data || true
+chown -R www-data:www-data /app/data || true
+
 # Diagnostic: Find PHP binaries
 echo "Searching for PHP-FPM binary..."
 FPM_BIN=$(which php-fpm8.2 || which php-fpm || find /usr/sbin -name "php*fpm*" | head -n 1)

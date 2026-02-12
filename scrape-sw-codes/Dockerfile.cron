@@ -1,0 +1,21 @@
+FROM alpine:3.19
+
+# Install curl and dcron (Alpine's cron)
+RUN apk add --no-cache curl dcron tzdata
+
+# Set timezone to Qatar (Asia/Qatar)
+ENV TZ=Asia/Qatar
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# Copy the scheduler script
+COPY cron-scheduler.sh /usr/local/bin/cron-scheduler.sh
+RUN chmod +x /usr/local/bin/cron-scheduler.sh
+
+# Create cron job: Run daily at 8:00 AM Qatar time
+RUN echo "0 8 * * * /usr/local/bin/cron-scheduler.sh >> /var/log/cron.log 2>&1" > /etc/crontabs/root
+
+# Create log file
+RUN touch /var/log/cron.log
+
+# Start cron in foreground and tail logs
+CMD crond -f -l 2 & tail -f /var/log/cron.log

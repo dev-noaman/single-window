@@ -1,57 +1,43 @@
-# Ignore everything by default
-/*
+node_modules/
+dist/
+__pycache__/
+*.pyc
 
-# Allow only these directories
-!API-php/
-!API-node/
-!.github/
-!docker/
-!Portal/
+# Environment files (contain credentials)
+.env
+!.env.example
 
-# Allow root README
-!README.md
+# Google credentials (service account keys)
+**/google-credentials.json
+**/credentials.json
 
-# Allow only .gitignore and .gitattributes
-!.gitignore
-!.gitattributes
+# API-CR session/request caches (contain auth tokens)
+API-CR/data/.env
+API-CR/data/session_cache.json
+API-CR/data/request_cache.json
 
-# Within API-php, ignore these
-API-php/__pycache__/
-API-php/*.py[cod]
-API-php/*$py.class
-API-php/*.so
-API-php/.Python
-API-php/*.egg-info/
-API-php/dist/
-API-php/build/
-API-php/*.png
-API-php/*.jpg
-API-php/*.jpeg
-API-php/*.gif
-API-php/error_*.png
-API-php/*.log
+# OfficeRnD credentials
+officernd/config/.env
+officernd/bff/.env
 
-# Within API-node, ignore these
-API-node/node_modules/
-API-node/npm-debug.log
-API-node/yarn-error.log
-API-node/*.log
-API-node/*.png
-API-node/*.jpg
-API-node/*.jpeg
-API-node/*.gif
+# Sync data files
+officernd/data/
 
-# IDE files (everywhere)
+# IDE/tool configs
 .vscode/
-.idea/
-*.swp
-*.swo
-*~
+.claude/
+.agents/
+.kiro/
+.specify/
+.playwright-mcp/
+
+# Logs
+*.log
+logs/
 
 # OS files
-.DS_Store
 Thumbs.db
-
-# Environment files
-.env
-.env.local
+.DS_Store
+_nul
+nul
+_nul

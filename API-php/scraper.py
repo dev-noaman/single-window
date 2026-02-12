@@ -18,6 +18,7 @@ BASE_URL = "https://investor.sw.gov.qa/wps/portal/investors/home/!ut/p/z1/04_Sj9
 # Details page XPaths
 X_ACTIVITY_CODE = "/html/body/div[4]/div/div/section/div[2]/main/section[3]/div/div/div/div/div[1]/div[2]"
 X_ACTIVITY_NAME = "/html/body/div[4]/div/div/section/div[2]/main/section[3]/div/div/div/div/div[3]/div[2]"
+X_STATUS = "/html/body/div[4]/div/div/section/div[2]/main/section[3]/div/div/div/div/div[2]/div[2]/div"
 X_TBODY = "/html/body/div[4]/div/div/section/div[2]/main/section[3]/div/div/div/div/div[8]/div[2]/table/tbody"
 X_ELIGIBLE = "/html/body/div[4]/div/div/section/div[2]/main/section[3]/div/div/div/div/div[9]/div[2]/table/tbody/tr[2]/td"
 X_NO_APPROVAL = "/html/body/div[4]/div/div/section/div[2]/main/section[3]/div/div/div/div/div[10]/div[2]"
@@ -210,6 +211,17 @@ async def get_text_xpath(page: Page, xpath: str, timeout_ms: int = 10_000) -> st
     return (txt or "").strip()
 
 
+async def get_status(page: Page) -> str:
+    """
+    Extract status from the specified XPath.
+    """
+    try:
+        status_text = await get_text_xpath(page, X_STATUS, timeout_ms=10_000)
+        return status_text
+    except Exception:
+        return "Unknown"
+
+
 async def get_table_data(page: Page) -> List[Tuple[str, str, str]]:
     try:
         tbody = page.locator(f"xpath={X_TBODY}")
@@ -388,6 +400,10 @@ async def process_activity_code(page: Page, code: str) -> tuple[bool, bool, str 
         if not extracted_code:
              return False, used_additional, "Activity code not found", {}
         data['activity_code'] = extracted_code
+
+        # Status (from specified XPath)
+        status = await get_status(page)
+        data['status'] = status
 
         # English Name
         await set_language(page, "en")
