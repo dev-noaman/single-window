@@ -585,56 +585,64 @@ def search_companies_by_query(query, username, password):
                                 'internal_id': str(internal_id) if internal_id else None
                             })
 
-            # --- Also try search-companies API (works for CR number lookups, may find non-user companies) ---
+            # --- Also try search-companies API ---
+            # For numeric queries: search by CR number
+            # For name queries: try estNameEn/estNameAr parameters
+            search_headers = {
+                "Authorization": f"Bearer {dp_token}",
+                "uri": "api/sw-certificates/search-companies",
+                "profileId": username,
+                "page": "0",
+                "size": "20",
+                "lang": "en",
+                "QID": username,
+                "accessId": access_id,
+                "requestSource": "Angular",
+                "Accept": "application/json, text/plain, */*",
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Referer": "https://investor.sw.gov.qa/wps/myportal/investors/dashboard",
+                "Origin": "https://investor.sw.gov.qa"
+            }
+
             if query.strip().isdigit():
-                search_headers = {
-                    "Authorization": f"Bearer {dp_token}",
-                    "uri": "api/sw-certificates/search-companies",
-                    "crNo": str(query.strip()),
-                    "profileId": username,
-                    "page": "0",
-                    "size": "10",
-                    "lang": "en",
-                    "QID": username,
-                    "accessId": access_id,
-                    "requestSource": "Angular",
-                    "Accept": "application/json, text/plain, */*",
-                    "Cache-Control": "no-cache, no-store, must-revalidate",
-                    "Pragma": "no-cache",
-                    "Referer": "https://investor.sw.gov.qa/wps/myportal/investors/dashboard",
-                    "Origin": "https://investor.sw.gov.qa"
-                }
+                search_headers["crNo"] = str(query.strip())
+            else:
+                # Try name search — pass query as both EN and AR name
+                search_headers["crNo"] = ""
+                search_headers["estNameEn"] = query.strip()
+                search_headers["estNameAr"] = query.strip()
 
-                search_resp = context.request.get(api_url, headers=search_headers)
-                if search_resp.ok:
-                    search_data = search_resp.json()
-                    companies = []
-                    if isinstance(search_data, list):
-                        companies = search_data
-                    elif isinstance(search_data, dict):
-                        if "data" in search_data and isinstance(search_data["data"], list):
-                            companies = search_data["data"]
-                        elif "items" in search_data:
-                            companies = search_data["items"]
-                        elif "content" in search_data:
-                            companies = search_data["content"]
-                        elif "crNumber" in search_data:
-                            companies = [search_data]
+            search_resp = context.request.get(api_url, headers=search_headers)
+            if search_resp.ok:
+                search_data = search_resp.json()
+                companies = []
+                if isinstance(search_data, list):
+                    companies = search_data
+                elif isinstance(search_data, dict):
+                    if "data" in search_data and isinstance(search_data["data"], list):
+                        companies = search_data["data"]
+                    elif "items" in search_data:
+                        companies = search_data["items"]
+                    elif "content" in search_data:
+                        companies = search_data["content"]
+                    elif "crNumber" in search_data:
+                        companies = [search_data]
 
-                    for company in companies:
-                        if not isinstance(company, dict):
-                            continue
-                        cr = str(company.get('crNumber', ''))
-                        if cr and cr not in seen_crs:
-                            seen_crs.add(cr)
-                            results.append({
-                                'cr_number': cr,
-                                'english_name': company.get('establishmentNameEn') or None,
-                                'arabic_name': company.get('establishmentNameAr') or None,
-                                'cp_number': str(company.get('cpNumber', '') or '') or None,
-                                'status': company.get('statusEn', company.get('crStatusEn')) or None,
-                                'internal_id': str(company.get('sourceKeyId', company.get('id', company.get('crId', ''))) or '') or None
-                            })
+                for company in companies:
+                    if not isinstance(company, dict):
+                        continue
+                    cr = str(company.get('crNumber', ''))
+                    if cr and cr not in seen_crs:
+                        seen_crs.add(cr)
+                        results.append({
+                            'cr_number': cr,
+                            'english_name': company.get('establishmentNameEn') or None,
+                            'arabic_name': company.get('establishmentNameAr') or None,
+                            'cp_number': str(company.get('cpNumber', '') or '') or None,
+                            'status': company.get('statusEn', company.get('crStatusEn')) or None,
+                            'internal_id': str(company.get('sourceKeyId', company.get('id', company.get('crId', ''))) or '') or None
+                        })
 
             return results
 

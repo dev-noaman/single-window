@@ -51,10 +51,16 @@ Qatar Investor Portal Scrapers - a multi-service web scraping platform that extr
 
 ## Build and Run Commands
 
-### One-Command Deployment (VPS)
-```powershell
-.\Deploy-to-Docker.ps1
-```
+### Automated Deployment (GitHub Actions)
+Push to `main` triggers `.github/workflows/deploy.yml` which:
+1. SSHs into VPS, pulls latest code from `dev-noaman/single` repo
+2. Rebuilds all Docker services with `--no-cache`
+3. Redeploys officernd host services via PM2
+4. Reloads host nginx config
+
+Manual trigger: Go to GitHub Actions > "Deploy to VPS" > Run workflow
+
+**GitHub Secrets required**: `VPS_HOST`, `VPS_USER`, `VPS_PASS`, `GH_PAT`
 
 ### API-node (TypeScript + Playwright)
 ```bash
@@ -201,12 +207,15 @@ npm run start:prod                                     # Run on port 8088
 
 ## Deployment Notes
 
-- **Deploy-to-Docker.ps1** deploys all Docker services + both officernd host services (PM2)
-- **Deploy-to-Docker.ps1** auto-installs PostgreSQL, creates databases/users, and creates DB tables on first deploy
+- **GitHub Actions** (`.github/workflows/deploy.yml`) is the primary deployment method — triggers on push to `main`
+- **VPS repo**: `dev-noaman/single` (GitHub). VPS path: `/root/scrapers/`. Workflow auto-sets remote URL to prevent stale repo issues.
+- **Portal Dockerfile** is written directly via heredoc in the workflow (VPS previously had a stale nginx:alpine Dockerfile from old `dev-noaman/scrapers` repo)
+- **`scripts/Deploy-to-Docker.ps1`** exists for manual PowerShell deployment but paths assume running from project root (currently broken — use GitHub Actions instead)
 - **officernd-api** runs as PM2 host service (`uvicorn api.main:app --host 0.0.0.0 --port 8087`), config/.env is preserved across deploys
 - **officernd-bff** connects to officernd API at `http://localhost:8087` (set in `.env` as `OFFICERND_API_URL`)
 - **officernd-bff** Vite `base: '/officernd/'` — all frontend assets and API calls are prefixed with `/officernd` to work behind nginx reverse proxy at `noaman.cloud/officernd/`
 - **scrape-sw-codes** uses host PostgreSQL (`codesdb` on port 5432), Docker maps web UI to external port `8084`
+- **Portal landing page**: Only `index.php` (terminal-style) should be served. `index.html` is gitignored and excluded via `.dockerignore`.
 
 ## OfficeRnD Sync Features
 
