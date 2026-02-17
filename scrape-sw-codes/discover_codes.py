@@ -25,7 +25,7 @@ HEADERS = {
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://codesuser:StrongPasswordHere@db:5432/codesdb")
 
 
-def update_progress(status, message, current_page=0, total_pages=0, total_records=0, new_inserted=0, updated=0):
+def update_progress(status, message, current_page=0, total_pages=0, total_records=0, new_inserted=0, updated=0, skipped=0):
     """Update progress file for real-time monitoring."""
     try:
         progress = {
@@ -36,6 +36,7 @@ def update_progress(status, message, current_page=0, total_pages=0, total_record
             "total_records": total_records,
             "new_inserted": new_inserted,
             "updated": updated,
+            "skipped": skipped,
             "timestamp": time.time()
         }
         with open(PROGRESS_FILE, 'w') as f:
@@ -89,6 +90,7 @@ async def fetch_all_activities(session: aiohttp.ClientSession, pool):
     page = 1
     total_inserted = 0
     total_updated = 0
+    total_skipped = 0
     total_pages = 1
     consecutive_no_changes = 0  # Track pages with no changes
     
@@ -122,22 +124,26 @@ async def fetch_all_activities(session: aiohttp.ClientSession, pool):
                         print("No more data")
                         break
                     
-                    # Save to database - OPTIMIZED BATCH INSERT
+                    # Save to database - OPTIMIZED BATCH INSERT with change detection
                     page_inserted = 0
                     page_updated = 0
-                    
+                    page_skipped = 0
+
                     async with pool.acquire() as conn:
-                        # Get existing codes in this batch for comparison
+                        # Get existing codes in this batch for comparison (with all fields)
                         codes_in_page = [item.get('activityCode') for item in content if isinstance(item, dict) and item.get('activityCode')]
-                        
+
                         if codes_in_page:
-                            # Check which codes already exist
+                            # Fetch existing records with their current values
                             existing_rows = await conn.fetch(
-                                "SELECT activity_code FROM business_activity_codes WHERE activity_code = ANY($1)",
+                                "SELECT activity_code, industry_id, name_en, name_ar, description_en FROM business_activity_codes WHERE activity_code = ANY($1)",
                                 codes_in_page
                             )
-                            existing_codes = set(row['activity_code'] for row in existing_rows)
-                            
+                            existing_map = {
+                                row['activity_code']: (row['industry_id'], row['name_en'], row['name_ar'], row['description_en'])
+                                for row in existing_rows
+                            }
+
                             # Prepare batch data
                             for item in content:
                                 if isinstance(item, dict) and item.get('activityCode'):
@@ -146,20 +152,24 @@ async def fetch_all_activities(session: aiohttp.ClientSession, pool):
                                     name_en = item.get('nameEn', '')
                                     name_ar = item.get('nameAr', '')
                                     description_en = item.get('descriptionEn', '')
-                                    
-                                    if code in existing_codes:
-                                        # Update existing record
-                                        await conn.execute("""
-                                            UPDATE business_activity_codes 
-                                            SET industry_id = $2, name_en = $3, name_ar = $4, 
-                                                description_en = $5, updated_at = NOW()
-                                            WHERE activity_code = $1
-                                        """, code, industry_id, name_en, name_ar, description_en)
-                                        page_updated += 1
+
+                                    if code in existing_map:
+                                        # Compare with existing values - only update if changed
+                                        old = existing_map[code]
+                                        if (industry_id, name_en, name_ar, description_en) != old:
+                                            await conn.execute("""
+                                                UPDATE business_activity_codes
+                                                SET industry_id = $2, name_en = $3, name_ar = $4,
+                                                    description_en = $5, updated_at = NOW()
+                                                WHERE activity_code = $1
+                                            """, code, industry_id, name_en, name_ar, description_en)
+                                            page_updated += 1
+                                        else:
+                                            page_skipped += 1
                                     else:
                                         # Insert new record
                                         await conn.execute("""
-                                            INSERT INTO business_activity_codes 
+                                            INSERT INTO business_activity_codes
                                             (activity_code, industry_id, name_en, name_ar, description_en, updated_at)
                                             VALUES ($1, $2, $3, $4, $5, NOW())
                                         """, code, industry_id, name_en, name_ar, description_en)
@@ -167,19 +177,22 @@ async def fetch_all_activities(session: aiohttp.ClientSession, pool):
                     
                     total_inserted += page_inserted
                     total_updated += page_updated
-                    
+                    total_skipped += page_skipped
+
                     # Status
                     parts = []
                     if page_inserted > 0:
                         parts.append(f"+{page_inserted} new")
                     if page_updated > 0:
                         parts.append(f"~{page_updated} updated")
-                    
+                    if page_skipped > 0:
+                        parts.append(f"={page_skipped} unchanged")
+
                     status = f", {', '.join(parts)}" if parts else " (no changes)"
                     print(f"  Page {page}: {len(content)} items{status}")
-                    
+
                     # Update progress in real-time
-                    update_progress("running", f"Page {page} completed", page, total_pages, total_elements, total_inserted, total_updated)
+                    update_progress("running", f"Page {page} completed", page, total_pages, total_elements, total_inserted, total_updated, total_skipped)
                     
                     # Smart skip: If no changes on this page, increment counter
                     if page_inserted == 0 and page_updated == 0:
@@ -210,7 +223,7 @@ async def fetch_all_activities(session: aiohttp.ClientSession, pool):
             update_progress("error", f"Error: {type(e).__name__}: {e}")
             break
     
-    return total_inserted, total_updated
+    return total_inserted, total_updated, total_skipped
 
 
 async def main():
@@ -255,12 +268,12 @@ async def main():
         # Fetch and save data
         connector = aiohttp.TCPConnector(limit=3)
         async with aiohttp.ClientSession(connector=connector) as session:
-            total_inserted, total_updated = await fetch_all_activities(session, pool)
-        
+            total_inserted, total_updated, total_skipped = await fetch_all_activities(session, pool)
+
         # Get final count
         final_count = await get_existing_count(pool)
         elapsed = time.time() - start_time
-        
+
         print(f"\n{'='*50}")
         print(f"COMPLETE!")
         print(f"{'='*50}")
@@ -268,10 +281,11 @@ async def main():
         print(f"   Total records:  {final_count}")
         print(f"   New inserted:   +{total_inserted}")
         print(f"   Updated:        ~{total_updated}")
+        print(f"   Unchanged:      ={total_skipped}")
         print(f"\n⏱️  ELAPSED TIME: {elapsed:.1f} seconds")
         print(f"{'='*50}")
-        
-        update_progress("completed", "Fetch completed successfully", 0, 0, final_count, total_inserted, total_updated)
+
+        update_progress("completed", "Fetch completed successfully", 0, 0, final_count, total_inserted, total_updated, total_skipped)
         
     finally:
         await pool.close()
