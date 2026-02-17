@@ -32,7 +32,7 @@ Qatar Investor Portal Scrapers - a multi-service web scraping platform that extr
 ┌─────────────────────────────────────────────────────────────────┐
 │                    scrape-sw-codes (8084)                       │
 │  SW_CODES_WEB (PHP) → SW_CODES_PYTHON → Host PostgreSQL (codesdb) │
-│  SW_CODES_CRON runs daily at 8 AM Qatar time (GMT+3)           │
+│  SW_CODES_CRON smart sync every hour (GMT+3)                   │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
@@ -181,7 +181,9 @@ All containers follow naming pattern for VPS path `/root/scrapers/`:
 - **API-CR/api_server.py**: HTTP API wrapper for certificate downloads and company search
 - **Portal/index.php**: Web portal with engine selection and CR search/download modal (supports search by CR number, English name, or Arabic name with multi-result selection)
 - **scrape-sw-codes/discover_codes.py**: Business codes fetcher (2800+ codes)
-- **scrape-sw-codes/Dockerfile.cron**: Cron scheduler (8 AM Qatar time)
+- **scrape-sw-codes/Dockerfile.cron**: Cron scheduler (hourly smart sync)
+- **scrape-sw-codes/cron-scheduler.sh**: Smart sync script (checks API vs DB count before fetching)
+- **scrape-sw-codes/check-update.php**: Lightweight API vs DB comparison (fetches 1 record)
 - **officernd/bff/src/main.ts**: NestJS BFF bootstrap (port 8088)
 - **officernd/bff/src/officernd/officernd.service.ts**: Sync status/progress/trigger with caching
 - **officernd/bff/src/officernd/officernd.controller.ts**: REST API endpoints
@@ -216,6 +218,14 @@ npm run start:prod                                     # Run on port 8088
 - **officernd-bff** Vite `base: '/officernd/'` — all frontend assets and API calls are prefixed with `/officernd` to work behind nginx reverse proxy at `noaman.cloud/officernd/`
 - **scrape-sw-codes** uses host PostgreSQL (`codesdb` on port 5432), Docker maps web UI to external port `8084`
 - **Portal landing page**: Only `index.php` (terminal-style) should be served. `index.html` is gitignored and excluded via `.dockerignore`.
+
+## scrape-sw-codes Features
+
+- **Smart sync**: Hourly cron checks MOCI API `totalElements` vs DB `COUNT(*)` (fetches only 1 record from API). Only triggers full fetch if counts differ. Skips with "Already up to date" if no new codes.
+- **Hourly schedule**: `SW_CODES_CRON` runs `cron-scheduler.sh` every hour (`0 * * * *`, Qatar timezone GMT+3). Previously daily at 8 AM.
+- **Full fetch**: Paginates MOCI API (100 items/page, ~29 pages, ~2800+ codes). For each code: INSERT if new, UPDATE if exists. Smart skip after 3 consecutive unchanged pages.
+- **Real-time progress**: `discover_codes.py` writes `/tmp/fetch_progress.json` in real-time. Portal polls `progress.php` for live page count, new codes, and updated codes.
+- **Container architecture**: `SW_CODES_PYTHON` runs once and exits (`restart: "no"`). Triggered by `trigger-fetch-codes.php` which calls `docker restart SW_CODES_PYTHON`.
 
 ## OfficeRnD Sync Features
 
