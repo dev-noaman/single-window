@@ -54,9 +54,10 @@ Qatar Investor Portal Scrapers - a multi-service web scraping platform that extr
 ### Automated Deployment (GitHub Actions)
 Push to `main` triggers `.github/workflows/deploy.yml` which:
 1. SSHs into VPS, pulls latest code from `dev-noaman/single` repo
-2. Rebuilds all Docker services with `--no-cache`
-3. Redeploys officernd host services via PM2
-4. Reloads host nginx config
+2. Force-removes orphaned containers by name (prevents "container name already in use" conflicts)
+3. Rebuilds all Docker services with `--no-cache`
+4. Redeploys officernd host services via PM2
+5. Reloads host nginx config
 
 Manual trigger: Go to GitHub Actions > "Deploy to VPS" > Run workflow
 
