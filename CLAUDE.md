@@ -60,7 +60,7 @@ Push to `main` triggers `.github/workflows/deploy.yml` which:
 
 Manual trigger: Go to GitHub Actions > "Deploy to VPS" > Run workflow
 
-**GitHub Secrets required**: `VPS_HOST`, `VPS_USER`, `VPS_PASS`, `GH_PAT`
+**GitHub Secrets required**: `VPS_HOST`, `VPS_USER`, `VPS_PASS`, `GH_TOKEN`
 
 ### API-node (TypeScript + Playwright)
 ```bash
