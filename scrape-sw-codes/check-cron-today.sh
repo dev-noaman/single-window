@@ -36,12 +36,8 @@ if [ -n "$CRON_LOGS" ]; then
     echo "$CRON_LOGS"
 else
     echo "⚠️  No cron execution logs found for today"
-    if [ "$CURRENT_HOUR_QATAR" -lt 8 ]; then
-        echo "   ⏰ Cron hasn't run yet (scheduled for 8:00 AM Qatar time)"
-        echo "   ⏳ Next run in approximately $((8 - CURRENT_HOUR_QATAR)) hour(s)"
-    else
-        echo "   ❌ Cron may have failed or container was restarted"
-    fi
+    echo "   ⏰ No runs logged yet today (smart sync runs every hour)"
+    echo "   ⏳ Next run at the top of the next hour"
 fi
 
 echo ""
@@ -107,13 +103,12 @@ echo "════════════════════════�
 
 # Determine overall status
 if [ -n "$CRON_LOGS" ] && [ "$LAST_UPDATE_DATE" = "$TODAY_QATAR" ]; then
-    echo "✅ Cron job appears to have run successfully today"
-elif [ "$CURRENT_HOUR_QATAR" -lt 8 ]; then
-    echo "⏰ Cron job hasn't run yet (scheduled for 8:00 AM Qatar time)"
-    echo "   ⏳ Next run in approximately $((8 - CURRENT_HOUR_QATAR)) hour(s)"
+    echo "✅ Smart sync ran successfully today"
+elif [ -n "$CRON_LOGS" ]; then
+    echo "✅ Smart sync ran today (skipped fetch - already up to date)"
 else
-    echo "⚠️  Cron job may have failed or not executed today"
-    echo "   🔍 Check the logs above for more details"
+    echo "⏰ No smart sync runs logged yet today (runs every hour)"
+    echo "   ⏳ Next run at the top of the next hour"
 fi
 
 echo ""

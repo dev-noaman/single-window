@@ -11,8 +11,8 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 COPY cron-scheduler.sh /usr/local/bin/cron-scheduler.sh
 RUN chmod +x /usr/local/bin/cron-scheduler.sh
 
-# Create cron job: Run daily at 8:00 AM Qatar time
-RUN echo "0 8 * * * /usr/local/bin/cron-scheduler.sh >> /var/log/cron.log 2>&1" > /etc/crontabs/root
+# Create cron job: Run every hour (smart sync - only fetches if new codes found)
+RUN echo "0 * * * * /usr/local/bin/cron-scheduler.sh >> /var/log/cron.log 2>&1" > /etc/crontabs/root
 
 # Create log file
 RUN touch /var/log/cron.log
