@@ -93,6 +93,8 @@ async def fetch_all_activities(session: aiohttp.ClientSession, pool):
     total_skipped = 0
     total_pages = 1
     consecutive_no_changes = 0  # Track pages with no changes
+    all_api_codes = set()  # Track all codes seen from API for deletion check
+    fetch_complete = False  # Only true if all pages were fetched successfully
     
     while True:
         url = f"{ALL_ACTIVITIES_URL}page={page}&size={PAGE_SIZE}"
@@ -134,6 +136,7 @@ async def fetch_all_activities(session: aiohttp.ClientSession, pool):
                         codes_in_page = [item.get('activityCode') for item in content if isinstance(item, dict) and item.get('activityCode')]
 
                         if codes_in_page:
+                            all_api_codes.update(codes_in_page)
                             # Fetch existing records with their current values
                             existing_rows = await conn.fetch(
                                 "SELECT activity_code, industry_id, name_en, name_ar, description_en FROM business_activity_codes WHERE activity_code = ANY($1)",
@@ -212,6 +215,7 @@ async def fetch_all_activities(session: aiohttp.ClientSession, pool):
                     
                     # Next page?
                     if page >= total_pages:
+                        fetch_complete = True
                         break
                     page += 1
                 else:
@@ -223,7 +227,7 @@ async def fetch_all_activities(session: aiohttp.ClientSession, pool):
             update_progress("error", f"Error: {type(e).__name__}: {e}")
             break
     
-    return total_inserted, total_updated, total_skipped
+    return total_inserted, total_updated, total_skipped, all_api_codes, fetch_complete
 
 
 async def main():
@@ -268,7 +272,23 @@ async def main():
         # Fetch and save data
         connector = aiohttp.TCPConnector(limit=3)
         async with aiohttp.ClientSession(connector=connector) as session:
-            total_inserted, total_updated, total_skipped = await fetch_all_activities(session, pool)
+            total_inserted, total_updated, total_skipped, all_api_codes, fetch_complete = await fetch_all_activities(session, pool)
+
+        # Delete codes that no longer exist in the API (only if ALL pages were fetched)
+        total_deleted = 0
+        if all_api_codes and fetch_complete:
+            async with pool.acquire() as conn:
+                db_codes = await conn.fetch("SELECT activity_code FROM business_activity_codes")
+                db_code_set = set(row['activity_code'] for row in db_codes)
+                stale_codes = db_code_set - all_api_codes
+                if stale_codes:
+                    stale_list = list(stale_codes)
+                    await conn.execute(
+                        "DELETE FROM business_activity_codes WHERE activity_code = ANY($1)",
+                        stale_list
+                    )
+                    total_deleted = len(stale_list)
+                    print(f"\n🗑️  Deleted {total_deleted} stale codes: {', '.join(stale_list[:10])}{'...' if len(stale_list) > 10 else ''}")
 
         # Get final count
         final_count = await get_existing_count(pool)
@@ -282,6 +302,8 @@ async def main():
         print(f"   New inserted:   +{total_inserted}")
         print(f"   Updated:        ~{total_updated}")
         print(f"   Unchanged:      ={total_skipped}")
+        if total_deleted > 0:
+            print(f"   Deleted:        -{total_deleted}")
         print(f"\n⏱️  ELAPSED TIME: {elapsed:.1f} seconds")
         print(f"{'='*50}")
 
