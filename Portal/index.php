@@ -386,6 +386,7 @@
             let checkCount = 0;
             const maxChecks = 600; // 600 checks * 3 seconds = 30 minutes max (enough for large fetches)
             let lastPageShown = 0; // Track last page we displayed
+            let seenRunning = false; // Guard: don't accept "completed" until we've seen the fetch actually start
 
             return new Promise((resolve) => {
                 const progressInterval = setInterval(async () => {
@@ -394,7 +395,7 @@
                     try {
                         // Use new progress endpoint for real-time updates
                         const progressResponse = await fetch('/sw-codes/progress.php');
-                        
+
                         if (!progressResponse.ok) {
                             throw new Error(`Progress check failed: ${progressResponse.status}`);
                         }
@@ -408,19 +409,25 @@
                             const newInserted = progressData.new_inserted || 0;
                             const updated = progressData.updated || 0;
 
+                            // Track when the fetch has actually started running
+                            if (status === 'running' || status === 'starting') {
+                                seenRunning = true;
+                            }
+
                             // Show page progress (only new pages)
                             if (currentPage > lastPageShown && currentPage > 0) {
                                 const changes = [];
                                 if (newInserted > 0) changes.push(`+${newInserted} new`);
                                 if (updated > 0) changes.push(`~${updated} updated`);
-                                
+
                                 const changeText = changes.length > 0 ? `, ${changes.join(', ')}` : '';
                                 log(`Page ${currentPage}/${totalPages}${changeText}`);
                                 lastPageShown = currentPage;
                             }
 
-                            // Check if completed
-                            if (status === 'completed') {
+                            // Only accept "completed" after we've seen the fetch actually running.
+                            // This prevents reading a stale "completed" from the previous run.
+                            if (status === 'completed' && seenRunning) {
                                 clearInterval(progressInterval);
                                 
                                 // Show completion summary

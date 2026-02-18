@@ -36,6 +36,21 @@ try {
     exec("$dockerPath restart SW_CODES_PYTHON 2>&1", $output, $returnCode);
 
     if ($returnCode === 0) {
+        // Reset the progress file immediately so the Portal doesn't read the
+        // previous run's "completed" status and stop monitoring prematurely.
+        $progressFile = '/tmp/fetch_progress.json';
+        file_put_contents($progressFile, json_encode([
+            'status'        => 'pending',
+            'message'       => 'Container restarted, waiting for fetch to begin...',
+            'current_page'  => 0,
+            'total_pages'   => 0,
+            'total_records' => 0,
+            'new_inserted'  => 0,
+            'updated'       => 0,
+            'skipped'       => 0,
+            'timestamp'     => microtime(true),
+        ]));
+
         echo json_encode([
             'success' => true,
             'message' => 'SW_CODES_PYTHON container restarted successfully.',
