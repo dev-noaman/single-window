@@ -97,7 +97,15 @@ async def fetch_single_page(session, page_num):
                 print(f"HTTP {resp.status} on page {page_num}")
                 return [], 1, 0, False
             text = await resp.text()
-            data = json.loads(text)
+            if not text or not text.strip():
+                print(f"Empty response on page {page_num} (Content-Type: {resp.content_type})")
+                return [], 1, 0, False
+            try:
+                data = json.loads(text)
+            except json.JSONDecodeError:
+                preview = text[:300].replace('\n', ' ')
+                print(f"Non-JSON response on page {page_num} (Content-Type: {resp.content_type}): {preview}")
+                return [], 1, 0, False
             content = []
             total_pages = 1
             total_elements = 0
@@ -336,7 +344,12 @@ async def main():
                     # Could not load last page — fall back to full fetch
                     print(f"  Could not load last page — falling back to full fetch...")
                     total_inserted, total_updated, total_skipped, all_api_codes, fetch_complete = await fetch_all_activities(session, pool)
-            elif ok and total_elements < existing_count:
+            elif not ok:
+                # API metadata fetch failed — cannot determine strategy.
+                # Log the error and abort (don't blindly do a full fetch that will also fail).
+                print("✗ Could not reach MOCI API — aborting fetch")
+                update_progress("error", "Could not reach MOCI API (see container logs for details)")
+            elif total_elements < existing_count:
                 # API has FEWER codes than DB — some codes were removed from the API.
                 # Must fetch every page (no smart skip) to build the complete API code set,
                 # then delete whatever is in DB but no longer in the API.
