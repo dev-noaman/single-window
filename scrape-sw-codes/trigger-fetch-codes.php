@@ -32,25 +32,27 @@ try {
         throw new Exception("SW_CODES_PYTHON container does not exist. Run 'docker-compose up -d' first to create it.");
     }
 
+    // Reset the progress file BEFORE restarting the container.
+    // This must happen first — once docker restart returns the container is already
+    // running and discover_codes.py may have written "starting" almost immediately.
+    // Writing "pending" after restart would wipe out that "starting" state.
+    $progressFile = '/tmp/fetch_progress.json';
+    file_put_contents($progressFile, json_encode([
+        'status'        => 'pending',
+        'message'       => 'Container restart requested, waiting for fetch to begin...',
+        'current_page'  => 0,
+        'total_pages'   => 0,
+        'total_records' => 0,
+        'new_inserted'  => 0,
+        'updated'       => 0,
+        'skipped'       => 0,
+        'timestamp'     => microtime(true),
+    ]));
+
     // Restart the container (works whether stopped or running)
     exec("$dockerPath restart SW_CODES_PYTHON 2>&1", $output, $returnCode);
 
     if ($returnCode === 0) {
-        // Reset the progress file immediately so the Portal doesn't read the
-        // previous run's "completed" status and stop monitoring prematurely.
-        $progressFile = '/tmp/fetch_progress.json';
-        file_put_contents($progressFile, json_encode([
-            'status'        => 'pending',
-            'message'       => 'Container restarted, waiting for fetch to begin...',
-            'current_page'  => 0,
-            'total_pages'   => 0,
-            'total_records' => 0,
-            'new_inserted'  => 0,
-            'updated'       => 0,
-            'skipped'       => 0,
-            'timestamp'     => microtime(true),
-        ]));
-
         echo json_encode([
             'success' => true,
             'message' => 'SW_CODES_PYTHON container restarted successfully.',

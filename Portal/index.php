@@ -387,6 +387,7 @@
             const maxChecks = 600; // 600 checks * 3 seconds = 30 minutes max (enough for large fetches)
             let lastPageShown = 0; // Track last page we displayed
             let seenRunning = false; // Guard: don't accept "completed" until we've seen the fetch actually start
+            let pendingChecks = 0; // Count consecutive "pending" polls to detect a stuck container
 
             return new Promise((resolve) => {
                 const progressInterval = setInterval(async () => {
@@ -412,6 +413,19 @@
                             // Track when the fetch has actually started running
                             if (status === 'running' || status === 'starting') {
                                 seenRunning = true;
+                                pendingChecks = 0;
+                            }
+
+                            // Detect stuck container: if still "pending" after ~30s, abort
+                            if (status === 'pending') {
+                                pendingChecks++;
+                                if (pendingChecks >= 10) { // 10 × 3s = 30s
+                                    clearInterval(progressInterval);
+                                    log('Container did not start within 30s — fetch may have failed.', 'error');
+                                    log('Try again or check docker logs for SW_CODES_PYTHON.', 'error');
+                                    resolve();
+                                    return;
+                                }
                             }
 
                             // Show page progress (only new pages)
