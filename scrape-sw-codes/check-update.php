@@ -48,11 +48,11 @@ try {
     $lastUpdate = null;
     
     // Connect to PostgreSQL (host or container: PGHOST from env when using host Postgres)
-    $pgHost = getenv('PGHOST') ?: 'db';
+    $pgHost = getenv('PGHOST') ?: 'localhost';
     $pgPort = getenv('PGPORT') ?: '5432';
     $pgDb   = getenv('PGDATABASE') ?: 'codesdb';
     $pgUser = getenv('PGUSER') ?: 'codesuser';
-    $pgPass = getenv('PGPASSWORD') ?: 'StrongPasswordHere';
+    $pgPass = getenv('PGPASSWORD') ?: 'CodesPass2024';
     $dsn = "pgsql:host={$pgHost};port={$pgPort};dbname={$pgDb}";
     $pdo = new PDO($dsn, $pgUser, $pgPass, [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,

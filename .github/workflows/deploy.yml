@@ -160,7 +160,11 @@ jobs:
             docker rm -f SW_CODES_PYTHON SW_CODES_WEB SW_CODES_CRON 2>/dev/null || true
 
             # Install PHP CLI + PostgreSQL extension (for check-update.php, progress.php)
-            apt-get update -qq && apt-get install -y -qq php-cli php-pgsql > /dev/null 2>&1 || echo "[WARN] PHP install issue"
+            apt-get update -qq
+            apt-get install -y -qq php-cli php-pgsql 2>/dev/null \
+              || apt-get install -y -qq php php-pgsql 2>/dev/null \
+              || echo "[WARN] PHP install issue — check-update.php may fail"
+            php -m 2>/dev/null | grep -qi pgsql && echo "[OK] php-pgsql loaded" || echo "[WARN] php-pgsql not loaded"
 
             # Install Python dependencies
             pip3 install --break-system-packages -q aiohttp asyncpg 2>&1 | tail -3
