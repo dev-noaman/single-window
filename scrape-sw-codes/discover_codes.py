@@ -336,9 +336,18 @@ async def main():
                     # Could not load last page — fall back to full fetch
                     print(f"  Could not load last page — falling back to full fetch...")
                     total_inserted, total_updated, total_skipped, all_api_codes, fetch_complete = await fetch_all_activities(session, pool)
+            elif ok and total_elements < existing_count:
+                # API has FEWER codes than DB — some codes were removed from the API.
+                # Must fetch every page (no smart skip) to build the complete API code set,
+                # then delete whatever is in DB but no longer in the API.
+                diff = existing_count - total_elements
+                print(f"API has {total_elements} codes, DB has {existing_count} (-{diff} removed) — full fetch to find deleted codes...")
+                update_progress("running", f"API has fewer codes (-{diff}), full fetch to detect deletions...", 0, total_pages, total_elements)
+                total_inserted, total_updated, total_skipped, all_api_codes, fetch_complete = await fetch_all_activities(
+                    session, pool, disable_smart_skip=True
+                )
             else:
-                # Normal path: counts are the same or fewer (possible deletions or data changes).
-                # Full fetch with smart skip.
+                # Counts are equal — check for data changes only. Smart skip is safe here.
                 total_inserted, total_updated, total_skipped, all_api_codes, fetch_complete = await fetch_all_activities(session, pool)
 
         # Delete codes that no longer exist in the API (only when ALL pages were fetched)
