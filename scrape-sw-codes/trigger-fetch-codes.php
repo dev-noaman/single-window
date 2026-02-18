@@ -53,11 +53,25 @@ try {
     exec("$dockerPath restart SW_CODES_PYTHON 2>&1", $output, $returnCode);
 
     if ($returnCode === 0) {
+        // Brief wait then check if container is actually running or already exited (crash)
+        sleep(2);
+        exec("$dockerPath inspect --format '{{.State.Status}}' SW_CODES_PYTHON 2>&1", $stateOutput, $stateCode);
+        $containerState = $stateCode === 0 ? trim(implode('', $stateOutput)) : 'unknown';
+
+        // If it already exited, grab the last few log lines for diagnostics
+        $logTail = '';
+        if ($containerState === 'exited') {
+            exec("$dockerPath logs --tail 20 SW_CODES_PYTHON 2>&1", $logOutput, $logCode);
+            $logTail = implode("\n", $logOutput);
+        }
+
         echo json_encode([
             'success' => true,
             'message' => 'SW_CODES_PYTHON container restarted successfully.',
             'output' => implode("\n", $output),
-            'docker_path' => $dockerPath
+            'docker_path' => $dockerPath,
+            'container_state' => $containerState,
+            'log_tail' => $logTail
         ]);
     } else {
         throw new Exception("docker restart failed (exit $returnCode): " . implode("\n", $output));

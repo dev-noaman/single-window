@@ -361,6 +361,19 @@
                 }
 
                 log('✓ Fetch process started successfully!', 'success');
+
+                // Show container diagnostics if available
+                if (fetchResult.container_state) {
+                    log(`Container state: ${fetchResult.container_state}`);
+                }
+                if (fetchResult.container_state === 'exited' && fetchResult.log_tail) {
+                    log('⚠ Container exited immediately. Last logs:', 'error');
+                    fetchResult.log_tail.split('\n').forEach(line => {
+                        if (line.trim()) log(`  ${line}`, 'error');
+                    });
+                    throw new Error('Container crashed on startup — see logs above');
+                }
+
                 log('Step 3: Monitoring progress...');
                 
                 // Step 3: Monitor progress in real-time
