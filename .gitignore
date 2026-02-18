@@ -29,6 +29,7 @@ Portal/index.html
 # IDE/tool configs
 .vscode/
 .claude/
+CLAUDE.md
 .agents/
 .kiro/
 .specify/

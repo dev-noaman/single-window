@@ -350,11 +350,11 @@
                 // Trigger fetch
                 const fetchResponse = await fetch('/sw-codes/trigger-fetch-codes.php');
                 
-                if (!fetchResponse.ok) {
-                    throw new Error(`HTTP Error: ${fetchResponse.status}`);
-                }
-
                 const fetchResult = await fetchResponse.json();
+
+                if (!fetchResponse.ok) {
+                    throw new Error(fetchResult.message || `HTTP Error: ${fetchResponse.status}`);
+                }
                 
                 if (!fetchResult.success) {
                     throw new Error(fetchResult.message || 'Failed to start fetch');
