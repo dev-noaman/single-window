@@ -5,13 +5,16 @@
 # Containers connect via host.docker.internal:5432
 
 services:
+  # NOTE: On the VPS, scrape-sw-codes runs on the host (not Docker).
+  # This docker-compose.yml is kept for local development only.
   fetch_codes:
     build: .
     container_name: SW_CODES_PYTHON
     restart: "no"
-    network_mode: host
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
-      DATABASE_URL: postgresql://codesuser:CodesPass2024@localhost:5432/codesdb
+      DATABASE_URL: postgresql://codesuser:CodesPass2024@host.docker.internal:5432/codesdb
       PYTHONUNBUFFERED: 1
     volumes:
       - /tmp:/tmp  # Share /tmp for progress file

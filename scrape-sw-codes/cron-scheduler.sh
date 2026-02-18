@@ -1,10 +1,10 @@
 #!/bin/sh
-# Smart sync scheduler - runs hourly, only fetches if API has new codes
+# Smart sync scheduler - runs hourly on the host, only fetches if API has new codes
 
 echo "$(date): Smart sync check starting..."
 
 # Step 1: Check if update is needed (compares API total vs DB total)
-CHECK_RESPONSE=$(curl -s -w "\n%{http_code}" http://SW_CODES_WEB:8000/check-update.php)
+CHECK_RESPONSE=$(curl -s -w "\n%{http_code}" http://localhost:8084/check-update.php)
 CHECK_HTTP=$(echo "$CHECK_RESPONSE" | tail -n1)
 CHECK_BODY=$(echo "$CHECK_RESPONSE" | head -n-1)
 
@@ -25,7 +25,7 @@ else
 fi
 
 # Step 2: Trigger the full fetch
-RESPONSE=$(curl -s -w "\n%{http_code}" http://SW_CODES_WEB:8000/trigger-fetch-codes.php)
+RESPONSE=$(curl -s -w "\n%{http_code}" http://localhost:8084/trigger-fetch-codes.php)
 HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
 BODY=$(echo "$RESPONSE" | head -n-1)
 

@@ -119,7 +119,7 @@ jobs:
             echo "[OK] Portal files ready"
 
             # --- Docker services ---
-            DOCKER_SERVICES=("API-php" "API-node" "API-CR" "Portal" "scrape-sw-codes" "scrape-sw-gsheet")
+            DOCKER_SERVICES=("API-php" "API-node" "API-CR" "Portal" "scrape-sw-gsheet")
 
             for svc in "${DOCKER_SERVICES[@]}"; do
               if [ -f "$REPO_DIR/$svc/docker-compose.yml" ]; then
@@ -149,6 +149,31 @@ jobs:
                 echo "[SKIP] $svc - no docker-compose.yml"
               fi
             done
+
+            # --- Host service: scrape-sw-codes (PHP + Python, no Docker) ---
+            echo ""
+            echo "[*] Deploying scrape-sw-codes (host)..."
+            cd "$REPO_DIR/scrape-sw-codes"
+
+            # Stop old Docker containers if they exist (migration from Docker to host)
+            docker compose down --remove-orphans 2>/dev/null || true
+            docker rm -f SW_CODES_PYTHON SW_CODES_WEB SW_CODES_CRON 2>/dev/null || true
+
+            # Install PHP CLI + PostgreSQL extension (for check-update.php, progress.php)
+            apt-get update -qq && apt-get install -y -qq php-cli php-pgsql > /dev/null 2>&1 || echo "[WARN] PHP install issue"
+
+            # Install Python dependencies
+            pip3 install --break-system-packages -q aiohttp asyncpg 2>&1 | tail -3
+
+            # PM2: serve PHP files on port 8084
+            pm2 delete sw-codes-web 2>/dev/null || true
+            pm2 start "php -S 0.0.0.0:8084 -t $REPO_DIR/scrape-sw-codes" --name sw-codes-web
+            echo "[OK] sw-codes-web on port 8084"
+
+            # Host crontab: hourly smart sync (Qatar time GMT+3)
+            chmod +x "$REPO_DIR/scrape-sw-codes/cron-scheduler.sh"
+            (crontab -l 2>/dev/null | grep -v 'sw-codes-cron' ; echo "0 * * * * TZ=Asia/Qatar $REPO_DIR/scrape-sw-codes/cron-scheduler.sh >> /var/log/sw-codes-cron.log 2>&1 # sw-codes-cron") | crontab -
+            echo "[OK] scrape-sw-codes deployed (host)"
 
             # --- Host service: officernd-api (Python + PM2) ---
             echo ""

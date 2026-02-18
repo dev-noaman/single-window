@@ -1,45 +1,38 @@
 <?php
 /**
- * Trigger the fetch_codes Docker container to run
- * This will start the discover_codes.py script to fetch business activity codes
+ * Trigger discover_codes.py to fetch business activity codes.
+ * Runs directly on the host (no Docker).
  */
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 
+$progressFile = '/tmp/fetch_progress.json';
+$scriptDir = __DIR__;
+$pythonScript = "$scriptDir/discover_codes.py";
+$logFile = '/tmp/discover_codes.log';
+
 try {
-    // Check if docker binary is accessible
-    exec("which docker 2>&1", $whichOutput, $whichCode);
-    $dockerPath = $whichCode === 0 ? trim($whichOutput[0]) : '/usr/bin/docker';
-
-    // Verify the binary actually exists and is executable
-    if (!file_exists($dockerPath)) {
-        throw new Exception("Docker binary not found at $dockerPath. Is /usr/bin/docker mounted into the container?");
+    // Verify the Python script exists
+    if (!file_exists($pythonScript)) {
+        throw new Exception("discover_codes.py not found at $pythonScript");
     }
 
-    // Test docker connectivity (ps is non-destructive)
-    exec("$dockerPath ps --format '{{.Names}}' 2>&1", $psOutput, $psCode);
-    if ($psCode !== 0) {
-        throw new Exception("Docker socket not accessible (exit $psCode): " . implode("\n", $psOutput));
+    // Check if a fetch is already running
+    exec("pgrep -f 'python3.*discover_codes.py' 2>/dev/null", $pgrepOutput, $pgrepCode);
+    if ($pgrepCode === 0 && !empty($pgrepOutput)) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'Fetch is already running (PID: ' . trim($pgrepOutput[0]) . ')'
+        ]);
+        exit;
     }
 
-    // Check if SW_CODES_PYTHON container exists (running or stopped)
-    $runningContainers = implode("\n", $psOutput);
-    exec("$dockerPath ps -a --format '{{.Names}}' 2>&1", $allOutput, $allCode);
-    $allContainers = implode("\n", $allOutput);
-
-    if (strpos($allContainers, 'SW_CODES_PYTHON') === false) {
-        throw new Exception("SW_CODES_PYTHON container does not exist. Run 'docker-compose up -d' first to create it.");
-    }
-
-    // Reset the progress file BEFORE restarting the container.
-    // This must happen first — once docker restart returns the container is already
-    // running and discover_codes.py may have written "starting" almost immediately.
-    // Writing "pending" after restart would wipe out that "starting" state.
-    $progressFile = '/tmp/fetch_progress.json';
+    // Reset the progress file BEFORE starting the script.
+    // Prevents the Portal from reading a stale "completed" from the previous run.
     file_put_contents($progressFile, json_encode([
         'status'        => 'pending',
-        'message'       => 'Container restart requested, waiting for fetch to begin...',
+        'message'       => 'Starting fetch process...',
         'current_page'  => 0,
         'total_pages'   => 0,
         'total_records' => 0,
@@ -49,33 +42,46 @@ try {
         'timestamp'     => microtime(true),
     ]));
 
-    // Restart the container (works whether stopped or running)
-    exec("$dockerPath restart SW_CODES_PYTHON 2>&1", $output, $returnCode);
+    // Run discover_codes.py as a background process on the host
+    $dbUrl = 'postgresql://codesuser:CodesPass2024@localhost:5432/codesdb';
+    $cmd = "DATABASE_URL='$dbUrl' PYTHONUNBUFFERED=1 python3 '$pythonScript' > '$logFile' 2>&1 &";
+    exec($cmd, $output, $returnCode);
 
-    if ($returnCode === 0) {
-        // Brief wait then check if container is actually running or already exited (crash)
-        sleep(2);
-        exec("$dockerPath inspect --format '{{.State.Status}}' SW_CODES_PYTHON 2>&1", $stateOutput, $stateCode);
-        $containerState = $stateCode === 0 ? trim(implode('', $stateOutput)) : 'unknown';
+    // Brief wait then check if the process started
+    usleep(500000); // 0.5s
+    exec("pgrep -f 'python3.*discover_codes.py' 2>/dev/null", $checkOutput, $checkCode);
+    $isRunning = ($checkCode === 0 && !empty($checkOutput));
 
-        // If it already exited, grab the last few log lines for diagnostics
-        $logTail = '';
-        if ($containerState === 'exited') {
-            exec("$dockerPath logs --tail 20 SW_CODES_PYTHON 2>&1", $logOutput, $logCode);
-            $logTail = implode("\n", $logOutput);
+    // Also check if the progress file has been updated (script started writing)
+    $containerState = $isRunning ? 'running' : 'unknown';
+    $logTail = '';
+
+    if (!$isRunning) {
+        // Script may have started and exited already — check log
+        usleep(1500000); // 1.5s more
+        if (file_exists($logFile)) {
+            $logTail = implode("\n", array_slice(file($logFile, FILE_IGNORE_NEW_LINES), -20));
         }
-
-        echo json_encode([
-            'success' => true,
-            'message' => 'SW_CODES_PYTHON container restarted successfully.',
-            'output' => implode("\n", $output),
-            'docker_path' => $dockerPath,
-            'container_state' => $containerState,
-            'log_tail' => $logTail
-        ]);
-    } else {
-        throw new Exception("docker restart failed (exit $returnCode): " . implode("\n", $output));
+        // Check progress file for error status
+        if (file_exists($progressFile)) {
+            $progress = json_decode(file_get_contents($progressFile), true);
+            if (isset($progress['status'])) {
+                $containerState = $progress['status'];
+            }
+        }
+        if ($containerState === 'pending' || $containerState === 'unknown') {
+            $containerState = 'exited';
+        }
     }
+
+    echo json_encode([
+        'success' => true,
+        'message' => $isRunning
+            ? 'Fetch process started successfully.'
+            : 'Fetch process started (may have completed quickly or failed).',
+        'container_state' => $containerState,
+        'log_tail' => $logTail
+    ]);
 
 } catch (Exception $e) {
     http_response_code(500);
