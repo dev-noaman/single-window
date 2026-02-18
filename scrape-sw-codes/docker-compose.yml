@@ -9,10 +9,9 @@ services:
     build: .
     container_name: SW_CODES_PYTHON
     restart: "no"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    network_mode: host
     environment:
-      DATABASE_URL: postgresql://codesuser:CodesPass2024@host.docker.internal:5432/codesdb
+      DATABASE_URL: postgresql://codesuser:CodesPass2024@localhost:5432/codesdb
       PYTHONUNBUFFERED: 1
     volumes:
       - /tmp:/tmp  # Share /tmp for progress file
