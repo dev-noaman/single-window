@@ -156,7 +156,8 @@ jobs:
             cd "$REPO_DIR/scrape-sw-codes"
 
             # Kill any stale discover_codes.py processes (prevents "already running" lock)
-            pkill -f 'python3.*discover_codes.py' 2>/dev/null || true
+            # Bracket trick: [d] matches 'd' in real processes but not the literal '[d]' in this shell's cmdline
+            pkill -f '[d]iscover_codes\.py' 2>/dev/null || true
             rm -f /tmp/fetch_progress.json 2>/dev/null || true
 
             # Stop old Docker containers if they exist (migration from Docker to host)
