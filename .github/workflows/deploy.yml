@@ -155,6 +155,10 @@ jobs:
             echo "[*] Deploying scrape-sw-codes (host)..."
             cd "$REPO_DIR/scrape-sw-codes"
 
+            # Kill any stale discover_codes.py processes (prevents "already running" lock)
+            pkill -f 'python3.*discover_codes.py' 2>/dev/null || true
+            rm -f /tmp/fetch_progress.json 2>/dev/null || true
+
             # Stop old Docker containers if they exist (migration from Docker to host)
             docker compose down --remove-orphans 2>/dev/null || true
             docker rm -f SW_CODES_PYTHON SW_CODES_WEB SW_CODES_CRON 2>/dev/null || true
