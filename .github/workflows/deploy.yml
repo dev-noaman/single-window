@@ -21,7 +21,8 @@ jobs:
           script: |
             set -e
             REPO_DIR="/root/scrapers"
-            REPO_URL="https://${{ secrets.GH_TOKEN }}@github.com/dev-noaman/single-window.git"
+            REPO_URL="https://x-access-token:${{ secrets.GH_TOKEN }}@github.com/dev-noaman/single-window.git"
+            export GIT_TERMINAL_PROMPT=0
 
             echo "=========================================="
             echo "  Deploying to VPS"
