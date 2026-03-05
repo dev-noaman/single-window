@@ -135,6 +135,8 @@ class APIHandler(BaseHTTPRequestHandler):
                 get_param('type', 'CR'),  # CR, CP, or BOTH
                 get_param('format', 'file')  # file or base64
             )
+        elif path == '/debug':
+            self.handle_debug()
         else:
             self.send_json_response({
                 'status': 'error',
@@ -353,6 +355,26 @@ class APIHandler(BaseHTTPRequestHandler):
                 'status': 'error',
                 'message': str(e)
             }, 500)
+
+    def handle_debug(self):
+        """Return recent debug log entries (temporary for debugging)."""
+        try:
+            if os.path.exists(DEBUG_LOG):
+                with open(DEBUG_LOG, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+                entries = []
+                for line in lines[-50:]:
+                    line = line.strip()
+                    if line:
+                        try:
+                            entries.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            entries.append({'raw': line[:200]})
+                self.send_json_response({'count': len(lines), 'recent': entries})
+            else:
+                self.send_json_response({'count': 0, 'recent': [], 'note': 'No log file yet'})
+        except Exception as e:
+            self.send_json_response({'error': str(e)}, 500)
     
     def _parse_search_output(self, output, cr_no):
         """Parse search output to extract company data."""
