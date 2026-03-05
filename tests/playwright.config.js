@@ -4,7 +4,7 @@ const { defineConfig, devices } = require('@playwright/test');
 module.exports = defineConfig({
   testDir: '.',
   testMatch: '**/*.spec.js',
-  timeout: 120000,
+  timeout: 960000, // 16 min for fetch-codes (~29 pages)
   expect: { timeout: 10000 },
   fullyParallel: false,
   forbidOnly: !!process.env.CI,

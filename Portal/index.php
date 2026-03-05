@@ -490,10 +490,10 @@
                                 pendingChecks = 0;
                             }
 
-                            // Detect stuck process: if still "pending" after ~60s, abort
+                            // Detect stuck process: if still "pending" after ~2 min, abort
                             if (status === 'pending') {
                                 pendingChecks++;
-                                if (pendingChecks >= 20) { // 20 × 3s = 60s (slow import on host)
+                                if (pendingChecks >= 40) { // 40 × 3s = 120s (PHP startup on loaded host)
                                     clearInterval(progressInterval);
                                     log('Fetch process did not start within 60s — may have failed.', 'error');
                                     log('Try again or check /tmp/discover_codes_php.log (PHP fetch) or /tmp/discover_codes.log on the server.', 'error');
