@@ -224,7 +224,9 @@ All scrapers return:
 |------|-------------|---------|
 | `/` | 8082 | Portal |
 | `/api-scraper/` | 8080 | api-scraper |
-| `/api-cr/` | 8086 | API-CR |
+| `/api-cr/` | 8086 | API-CR (fallback; Portal uses cr.noaman.cloud in prod) |
+
+**cr.noaman.cloud** (separate server block): Direct proxy to 8086. Used by Portal for SCRAPE_CR to avoid Cloudflare 524 timeout. DNS: A record to VPS IP with **grey cloud** (DNS only) in Cloudflare.
 | `/sw-codes/` | 8084 | scrape-sw-codes (PM2 PHP) |
 | `/gsheet-scraper/` | 8085 | scrape-sw-gsheet (PHP web container) |
 | `/officernd/` | 8088 | officernd-bff |

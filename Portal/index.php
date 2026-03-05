@@ -167,6 +167,7 @@
 
         let crSearchType = 'cr'; // 'cr', 'en', 'ar'
         let selectedCompanyCr = null; // CR number of selected company
+        const API_CR_BASE = (/^(www\.)?noaman\.cloud$/.test(window.location.hostname)) ? 'https://cr.noaman.cloud' : (window.location.origin + '/api-cr');
 
         function log(message, type = 'info') {
             const line = document.createElement('div');
@@ -831,7 +832,7 @@
 
                 if (isExactCr) {
                     // Try exact CR search first (faster, works for non-user companies)
-                    const response = await fetch(`/api-cr/search?cr=${encodeURIComponent(query)}`);
+                    const response = await fetch(`${API_CR_BASE}/search?cr=${encodeURIComponent(query)}`);
                     // #region agent log
                     fetch('http://127.0.0.1:7753/ingest/a0faa107-ded3-47c8-a8ec-f76a8ebc1250',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'650286'},body:JSON.stringify({sessionId:'650286',location:'Portal/index.php:cr_search',message:'api-cr response',data:{ok:response.ok,status:response.status,query},timestamp:Date.now(),hypothesisId:'E'})}).catch(()=>{});
                     // #endregion
@@ -845,7 +846,7 @@
                 }
 
                 // Also do a query search (finds multiple matches, searches by name)
-                const qResponse = await fetch(`/api-cr/search?q=${encodeURIComponent(query)}`);
+                const qResponse = await fetch(`${API_CR_BASE}/search?q=${encodeURIComponent(query)}`);
                 // #region agent log
                 fetch('http://127.0.0.1:7753/ingest/a0faa107-ded3-47c8-a8ec-f76a8ebc1250',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'650286'},body:JSON.stringify({sessionId:'650286',location:'Portal/index.php:q_search',message:'api-cr q= response',data:{ok:qResponse.ok,status:qResponse.status,query},timestamp:Date.now(),hypothesisId:'E'})}).catch(()=>{});
                 // #endregion
@@ -909,7 +910,7 @@
             log(`[CR] Downloading ${certLabel} certificate for CR: ${crNumber}...`);
 
             try {
-                const response = await fetch(`/api-cr/download?cr=${crNumber}&type=${certType}&format=base64`);
+                const response = await fetch(`${API_CR_BASE}/download?cr=${crNumber}&type=${certType}&format=base64`);
 
                 if (!response.ok) {
                     throw new Error(`HTTP Error: ${response.status}`);

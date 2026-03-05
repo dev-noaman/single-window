@@ -223,8 +223,14 @@ jobs:
             echo "[*] Reloading nginx..."
             if [ -f "$REPO_DIR/Portal/noaman.cloud.nginx.conf" ]; then
               cp "$REPO_DIR/Portal/noaman.cloud.nginx.conf" /etc/nginx/sites-available/noaman.cloud
-              nginx -t 2>&1 && systemctl reload nginx && echo "[OK] Nginx reloaded" || echo "[WARN] Nginx config test failed"
+              echo "[OK] noaman.cloud config copied"
             fi
+            if [ -f "$REPO_DIR/Portal/cr.noaman.cloud.nginx.conf" ]; then
+              cp "$REPO_DIR/Portal/cr.noaman.cloud.nginx.conf" /etc/nginx/sites-available/cr.noaman.cloud
+              ln -sf /etc/nginx/sites-available/cr.noaman.cloud /etc/nginx/sites-enabled/cr.noaman.cloud 2>/dev/null || true
+              echo "[OK] cr.noaman.cloud config copied (API-CR direct, bypass proxy)"
+            fi
+            nginx -t 2>&1 && systemctl reload nginx && echo "[OK] Nginx reloaded" || echo "[WARN] Nginx config test failed"
 
             # --- Cleanup ---
             docker image prune -f 2>/dev/null || true
