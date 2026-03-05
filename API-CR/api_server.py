@@ -5,6 +5,17 @@ Exposes company search and certificate download functionality via HTTP API.
 
 import json
 import os
+import time
+
+# #region agent log
+DEBUG_LOG = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "debug-650286.log")
+def _log(loc, msg, data, hid):
+    try:
+        with open(DEBUG_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"sessionId":"650286","location":loc,"message":msg,"data":data,"timestamp":int(time.time()*1000),"hypothesisId":hid}) + "\n")
+    except Exception:
+        pass
+# #endregion
 import sys
 import tempfile
 import base64
@@ -196,6 +207,9 @@ class APIHandler(BaseHTTPRequestHandler):
 
     def handle_search(self, cr_no):
         """Handle company search request."""
+        # #region agent log
+        _log("api_server.py:handle_search:entry", "handle_search called", {"cr_no": cr_no}, "A")
+        # #endregion
         if not cr_no:
             self.send_json_response({
                 'status': 'error',
@@ -204,6 +218,9 @@ class APIHandler(BaseHTTPRequestHandler):
             return
         
         user_qid, user_pass = load_credentials()
+        # #region agent log
+        _log("api_server.py:handle_search:creds", "credentials check", {"has_qid": bool(user_qid), "has_pass": bool(user_pass)}, "A")
+        # #endregion
         if not user_qid or not user_pass:
             self.send_json_response({
                 'status': 'error',
@@ -225,6 +242,9 @@ class APIHandler(BaseHTTPRequestHandler):
             
             # Parse output for company data
             company_data = self._parse_search_output(captured_output, cr_no)
+            # #region agent log
+            _log("api_server.py:handle_search:parsed", "after run_company_search", {"output_len": len(captured_output), "output_preview": captured_output[:500] if captured_output else "", "company_data": company_data, "has_english_name": bool(company_data.get("english_name"))}, "B")
+            # #endregion
             
             self.send_json_response({
                 'status': 'success',
@@ -233,6 +253,9 @@ class APIHandler(BaseHTTPRequestHandler):
             })
             
         except Exception as e:
+            # #region agent log
+            _log("api_server.py:handle_search:exception", "exception in handle_search", {"error": str(e), "type": type(e).__name__}, "B")
+            # #endregion
             self.send_json_response({
                 'status': 'error',
                 'message': str(e)

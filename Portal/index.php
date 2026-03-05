@@ -832,6 +832,9 @@
                 if (isExactCr) {
                     // Try exact CR search first (faster, works for non-user companies)
                     const response = await fetch(`/api-cr/search?cr=${encodeURIComponent(query)}`);
+                    // #region agent log
+                    fetch('http://127.0.0.1:7753/ingest/a0faa107-ded3-47c8-a8ec-f76a8ebc1250',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'650286'},body:JSON.stringify({sessionId:'650286',location:'Portal/index.php:cr_search',message:'api-cr response',data:{ok:response.ok,status:response.status,query},timestamp:Date.now(),hypothesisId:'E'})}).catch(()=>{});
+                    // #endregion
                     if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
                     const data = await response.json();
 
@@ -843,6 +846,9 @@
 
                 // Also do a query search (finds multiple matches, searches by name)
                 const qResponse = await fetch(`/api-cr/search?q=${encodeURIComponent(query)}`);
+                // #region agent log
+                fetch('http://127.0.0.1:7753/ingest/a0faa107-ded3-47c8-a8ec-f76a8ebc1250',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'650286'},body:JSON.stringify({sessionId:'650286',location:'Portal/index.php:q_search',message:'api-cr q= response',data:{ok:qResponse.ok,status:qResponse.status,query},timestamp:Date.now(),hypothesisId:'E'})}).catch(()=>{});
+                // #endregion
                 if (qResponse.ok) {
                     const qData = await qResponse.json();
                     if (qData.status === 'success' && qData.companies) {

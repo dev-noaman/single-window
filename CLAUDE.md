@@ -302,6 +302,7 @@ npm run start:prod                                     # Run on port 8088
 ## Deployment Notes
 
 - **GitHub Actions** (`.github/workflows/deploy.yml`) is the primary deployment method — triggers on push to `main`
+- **Deploy stale-process kill**: Uses `pgrep` + `kill` with PID exclusion (`$$`) — **never** `pkill -f`, which matches the deploy script itself and causes SIGTERM 143. Pattern: `for pid in $(pgrep -f '...'); do [ "$pid" != "$MY_PID" ] && kill -TERM "$pid"; done`
 - **VPS repo**: `dev-noaman/single-window` (GitHub). VPS path: `/root/scrapers/`. Workflow auto-sets remote URL to prevent stale repo issues.
 - **Portal Dockerfile** is written directly via heredoc in the workflow (VPS previously had a stale nginx:alpine Dockerfile from old `dev-noaman/scrapers` repo)
 - **`scripts/Deploy-to-Docker.ps1`** exists for manual PowerShell deployment but paths assume running from project root (currently broken — use GitHub Actions instead)

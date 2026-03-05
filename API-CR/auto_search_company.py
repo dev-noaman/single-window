@@ -7,6 +7,16 @@ from dotenv import load_dotenv
 
 import sys
 
+# #region agent log
+def _log(loc, msg, data, hid):
+    try:
+        p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "debug-650286.log")
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"sessionId":"650286","location":loc,"message":msg,"data":data,"timestamp":int(time.time()*1000),"hypothesisId":hid}) + "\n")
+    except Exception:
+        pass
+# #endregion
+
 # Directory and File paths
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(SCRIPT_DIR, "data")
@@ -669,6 +679,9 @@ def run_company_search(cr_no, username, password, download_cr=False, download_cp
         response = context.request.get(api_url, headers=headers)
         cp_number = None
         source_key_id = None
+        # #region agent log
+        _log("auto_search_company.py:do_login_and_search:api_resp", "Qatar API response", {"ok": response.ok, "status": response.status, "cr_no": cr_no}, "C")
+        # #endregion
 
         if response.ok:
             data = response.json()
@@ -685,8 +698,14 @@ def run_company_search(cr_no, username, password, download_cr=False, download_cp
                 elif "crNumber" in data:
                     companies = [data]
                 else:
+                    # #region agent log
+                    _log("auto_search_company.py:do_login_and_search:unknown_format", "unknown API format", {"keys": list(data.keys()) if isinstance(data, dict) else "not_dict"}, "D")
+                    # #endregion
                     print(f"WARNING: Could not identify company list. keys: {list(data.keys())}")
 
+            # #region agent log
+            _log("auto_search_company.py:do_login_and_search:companies", "companies parsed", {"count": len(companies) if companies else 0, "first_keys": list(companies[0].keys()) if companies and isinstance(companies[0], dict) else None}, "C")
+            # #endregion
             if companies:
                 printed_crs = set()
                 for company in companies:
@@ -722,9 +741,15 @@ def run_company_search(cr_no, username, password, download_cr=False, download_cp
                             print(f"[WARNING] No internal ID found for CR {company_cr}")
                     print("="*40 + "\n")
             else:
+                # #region agent log
+                _log("auto_search_company.py:do_login_and_search:no_results", "Qatar API returned empty", {"cr_no": cr_no}, "C")
+                # #endregion
                 print(f"No results found for CR {cr_no}")
                 return
         else:
+            # #region agent log
+            _log("auto_search_company.py:do_login_and_search:api_error", "Qatar API non-OK", {"status": response.status, "cr_no": cr_no}, "C")
+            # #endregion
             print(f"API Error: {response.status} {response.status_text}")
             try:
                 print(f"Server Response: {response.text()}")
@@ -753,6 +778,9 @@ def run_company_search(cr_no, username, password, download_cr=False, download_cp
             timeout=120_000,
         )
     except Exception as e:
+        # #region agent log
+        _log("auto_search_company.py:run_company_search:exception", "StealthyFetcher exception", {"error": str(e), "type": type(e).__name__}, "B")
+        # #endregion
         try:
             print(f"An unexpected error occurred: {e}")
         except UnicodeEncodeError:
