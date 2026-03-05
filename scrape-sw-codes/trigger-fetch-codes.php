@@ -18,14 +18,21 @@ try {
         throw new Exception("discover_codes.py not found at $pythonScript");
     }
 
-    // Check if a fetch is already running
+    // Check if a fetch is already running (allow force=1 to kill and restart)
+    $force = isset($_GET['force']) && $_GET['force'] === '1';
     exec("pgrep -f 'python3.*discover_codes.py' 2>/dev/null", $pgrepOutput, $pgrepCode);
     if ($pgrepCode === 0 && !empty($pgrepOutput)) {
-        echo json_encode([
-            'success' => false,
-            'message' => 'Fetch is already running (PID: ' . trim($pgrepOutput[0]) . ')'
-        ]);
-        exit;
+        if ($force) {
+            exec("pkill -f 'python3.*discover_codes.py' 2>/dev/null");
+            usleep(500000); // 0.5s for process to exit
+        } else {
+            echo json_encode([
+                'success' => false,
+                'message' => 'Fetch is already running (PID: ' . trim($pgrepOutput[0]) . ')',
+                'hint' => 'Add ?force=1 to kill and restart'
+            ]);
+            exit;
+        }
     }
 
     // Reset the progress file BEFORE starting the script.

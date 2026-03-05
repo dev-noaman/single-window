@@ -336,10 +336,15 @@
                 
                 fetchCodesBtn.textContent = '⏳ FETCHING...';
 
-                // Trigger fetch
-                const fetchResponse = await fetch('/sw-codes/trigger-fetch-codes.php');
-                
-                const fetchResult = await fetchResponse.json();
+                // Trigger fetch (retry with force=1 if already running)
+                let fetchResponse = await fetch('/sw-codes/trigger-fetch-codes.php');
+                let fetchResult = await fetchResponse.json();
+
+                if (!fetchResult.success && fetchResult.message && fetchResult.message.includes('already running')) {
+                    log('Fetch already in progress. Force restarting...', 'info');
+                    fetchResponse = await fetch('/sw-codes/trigger-fetch-codes.php?force=1');
+                    fetchResult = await fetchResponse.json();
+                }
 
                 if (!fetchResponse.ok) {
                     throw new Error(fetchResult.message || `HTTP Error: ${fetchResponse.status}`);
