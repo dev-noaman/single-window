@@ -17,7 +17,8 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           password: ${{ secrets.VPS_PASS }}
-          command_timeout: 40m
+          command_timeout: 90m
+          request_pty: true
           script: |
             set -e
             REPO_DIR="/root/scrapers"
@@ -159,16 +160,15 @@ jobs:
             echo "[*] Deploying scrape-sw-codes (host)..."
             cd "$REPO_DIR/scrape-sw-codes"
 
-            # Kill any stale discover_codes.py processes (prevents "already running" lock)
-            # Bracket trick: [d] matches 'd' in real processes but not the literal '[d]' in this shell's cmdline
+            echo "[*] Killing stale processes..."
             pkill -f '[d]iscover_codes\.py' 2>/dev/null || true
             rm -f /tmp/fetch_progress.json 2>/dev/null || true
 
-            # Stop old Docker containers if they exist (migration from Docker to host)
+            echo "[*] Stopping old Docker containers..."
             docker compose down --remove-orphans 2>/dev/null || true
             docker rm -f SW_CODES_PYTHON SW_CODES_WEB SW_CODES_CRON 2>/dev/null || true
 
-            # Install PHP CLI + PostgreSQL extension (for check-update.php, progress.php)
+            echo "[*] Installing PHP + PostgreSQL..."
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -qq
             apt-get install -y -qq php-cli php-pgsql 2>/dev/null \
@@ -176,8 +176,7 @@ jobs:
               || echo "[WARN] PHP install issue — check-update.php may fail"
             php -m 2>/dev/null | grep -qi pgsql && echo "[OK] php-pgsql loaded" || echo "[WARN] php-pgsql not loaded"
 
-            # Install Python dependencies (Scrapling HTTP fetcher for discover_codes.py, asyncpg for DB)
-            # Note: no playwright browser install needed — discover_codes.py uses AsyncFetcher (HTTP only)
+            echo "[*] Installing Python dependencies (scrapling, asyncpg)..."
             pip3 install --break-system-packages -q scrapling asyncpg 2>&1 | tail -3
 
             # PM2: serve PHP files on port 8084
