@@ -176,8 +176,8 @@ jobs:
               || echo "[WARN] PHP install issue — check-update.php may fail"
             php -m 2>/dev/null | grep -qi pgsql && echo "[OK] php-pgsql loaded" || echo "[WARN] php-pgsql not loaded"
 
-            echo "[*] Installing Python dependencies (httpx, asyncpg)..."
-            pip3 install --break-system-packages -q httpx asyncpg 2>&1 | tail -3
+            echo "[*] Installing Python dependencies (httpx, asyncpg, certifi)..."
+            pip3 install --break-system-packages -q httpx asyncpg certifi 2>&1 | tail -3
 
             # PM2: serve PHP files on port 8084
             pm2 delete sw-codes-web 2>/dev/null || true

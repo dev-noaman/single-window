@@ -4,6 +4,7 @@ import os
 import time
 import asyncpg
 import httpx
+import certifi
 from urllib.parse import urlparse
 
 # API endpoint for ALL activities (no industry filter)
@@ -99,7 +100,11 @@ async def fetch_single_page(page_num, client=None):
     owns_client = client is None
     try:
         if owns_client:
-            client = httpx.AsyncClient(headers=HEADERS, timeout=TIMEOUT_SECONDS)
+            client = httpx.AsyncClient(
+                headers=HEADERS,
+                timeout=TIMEOUT_SECONDS,
+                verify=certifi.where(),
+            )
         response = await client.get(url)
         if response.status_code != 200:
             print(f"HTTP {response.status_code} on page {page_num}")
