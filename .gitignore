@@ -34,6 +34,11 @@ CLAUDE.md
 .kiro/
 .specify/
 .playwright-mcp/
+tests/test-results/
+tests/playwright-report/
+tests/blob-report/
+tests/playwright/.cache/
+tests/node_modules/
 
 # Logs
 *.log
