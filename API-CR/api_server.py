@@ -20,6 +20,11 @@ import sys
 import tempfile
 import base64
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from socketserver import ThreadingMixIn
+
+
+class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
+    """Allow concurrent requests (health checks while /search runs)."""
 from urllib.parse import urlparse, parse_qs
 from pathlib import Path
 
@@ -76,7 +81,10 @@ class APIHandler(BaseHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
-        self.wfile.write(json.dumps(data, ensure_ascii=False).encode('utf-8'))
+        try:
+            self.wfile.write(json.dumps(data, ensure_ascii=False).encode('utf-8'))
+        except BrokenPipeError:
+            pass  # Client closed connection (e.g. healthcheck timeout)
     
     def send_pdf_response(self, pdf_data, filename):
         """Send a PDF file response."""
@@ -86,7 +94,10 @@ class APIHandler(BaseHTTPRequestHandler):
         self.send_header('Content-Length', str(len(pdf_data)))
         self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
-        self.wfile.write(pdf_data)
+        try:
+            self.wfile.write(pdf_data)
+        except BrokenPipeError:
+            pass
     
     def do_OPTIONS(self):
         """Handle CORS preflight requests."""
@@ -401,7 +412,7 @@ def main():
     print(f"    GET /download?cr=XXXXX&type=CR|CP|BOTH - Download certificates")
     print(f"\n{'='*50}\n")
     
-    server = HTTPServer((HOST, PORT), APIHandler)
+    server = ThreadedHTTPServer((HOST, PORT), APIHandler)
     
     try:
         server.serve_forever()
