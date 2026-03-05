@@ -226,6 +226,13 @@ jobs:
               echo "[OK] noaman.cloud config copied"
             fi
             if [ -f "$REPO_DIR/Portal/cr.noaman.cloud.nginx.conf" ]; then
+              mkdir -p /var/www/html
+              if [ ! -f /etc/letsencrypt/live/cr.noaman.cloud/fullchain.pem ]; then
+                cp "$REPO_DIR/Portal/cr.noaman.cloud.nginx.bootstrap.conf" /etc/nginx/sites-available/cr.noaman.cloud
+                ln -sf /etc/nginx/sites-available/cr.noaman.cloud /etc/nginx/sites-enabled/cr.noaman.cloud 2>/dev/null || true
+                nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null || true
+                certbot certonly --webroot -w /var/www/html -d cr.noaman.cloud --non-interactive --agree-tos -m admin@noaman.cloud 2>/dev/null || echo "[WARN] certbot cr.noaman.cloud failed - run: certbot certonly --webroot -w /var/www/html -d cr.noaman.cloud"
+              fi
               cp "$REPO_DIR/Portal/cr.noaman.cloud.nginx.conf" /etc/nginx/sites-available/cr.noaman.cloud
               ln -sf /etc/nginx/sites-available/cr.noaman.cloud /etc/nginx/sites-enabled/cr.noaman.cloud 2>/dev/null || true
               echo "[OK] cr.noaman.cloud config copied (API-CR direct, bypass proxy)"
