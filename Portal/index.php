@@ -52,9 +52,6 @@
                 <button id="fetchCodesBtn" class="cursor-pointer uppercase font-bold transition-all p-1.5 sm:p-2 text-xs sm:text-sm border border-gray-800 text-yellow-400 hover:bg-yellow-400 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed">
                     🔄 FETCH_CODES
                 </button>
-                <button id="fetchCodes2Btn" class="cursor-pointer uppercase font-bold transition-all p-1.5 sm:p-2 text-xs sm:text-sm border border-yellow-600 text-yellow-500 hover:bg-yellow-500 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed" title="curl-based fetch">
-                    🔄 FETCH_CODES_2
-                </button>
                 <button id="fetchCodes3Btn" class="cursor-pointer uppercase font-bold transition-all p-1.5 sm:p-2 text-xs sm:text-sm border border-green-600 text-green-500 hover:bg-green-500 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed" title="Pure PHP fetch (best on VPS)">
                     🔄 FETCH_CODES_3
                 </button>
@@ -150,7 +147,6 @@
         const codeInput = document.getElementById('codeInput');
         const execBtn = document.getElementById('execBtn');
         const fetchCodesBtn = document.getElementById('fetchCodesBtn');
-        const fetchCodes2Btn = document.getElementById('fetchCodes2Btn');
         const fetchCodes3Btn = document.getElementById('fetchCodes3Btn');
         const scrapeEngBtn = document.getElementById('scrapeEngBtn');
         const scrapeCrBtn = document.getElementById('scrapeCrBtn');
@@ -389,38 +385,6 @@
                 fetchCodesBtn.textContent = '🔄 FETCH_CODES';
                 
                 // Add separator
-                const sep = document.createElement('div');
-                sep.className = 'border-b border-dashed border-gray-800 my-5';
-                terminal.appendChild(sep);
-                terminal.scrollTop = terminal.scrollHeight;
-            }
-        });
-
-        // Fetch Codes 2 - simple: just trigger and monitor (curl-based)
-        fetchCodes2Btn.addEventListener('click', async () => {
-            fetchCodes2Btn.disabled = true;
-            fetchCodes2Btn.textContent = '⏳ FETCHING...';
-            log('Initiating FETCH_CODES_2 (curl) — go to URL, fetch all pages...');
-            try {
-                let r = await fetch('/sw-codes/trigger-fetch-codes2.php');
-                let res = await r.json();
-                if (!res.success && res.message && res.message.includes('already running')) {
-                    log('Fetch Codes 2 already running. Force restarting...', 'info');
-                    r = await fetch('/sw-codes/trigger-fetch-codes2.php?force=1');
-                    res = await r.json();
-                }
-                if (!res.success) throw new Error(res.message || 'Failed to start');
-                log('✓ Fetch Codes 2 started.', 'success');
-                if (res.container_state) log(`State: ${res.container_state}`);
-                if (res.container_state === 'exited' && res.log_tail) {
-                    res.log_tail.split('\n').forEach(l => { if (l.trim()) log(`  ${l}`, 'error'); });
-                }
-                await monitorFetchProgress();
-            } catch (e) {
-                log(`Fetch Codes 2 failed: ${e.message}`, 'error');
-            } finally {
-                fetchCodes2Btn.disabled = false;
-                fetchCodes2Btn.textContent = '🔄 FETCH_CODES_2';
                 const sep = document.createElement('div');
                 sep.className = 'border-b border-dashed border-gray-800 my-5';
                 terminal.appendChild(sep);

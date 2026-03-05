@@ -163,9 +163,10 @@ jobs:
 
             echo "[*] Killing stale processes..."
             pkill -f '[d]iscover_codes\.py' 2>/dev/null || true
-            pkill -f '[d]iscover_codes2\.py' 2>/dev/null || true
             pkill -f 'php.*fetch_codes_php' 2>/dev/null || true
+            pkill -f '[d]iscover_codes2\.py' 2>/dev/null || true
             rm -f /tmp/fetch_progress.json 2>/dev/null || true
+            rm -f "$REPO_DIR/scrape-sw-codes/trigger-fetch-codes2.php" "$REPO_DIR/scrape-sw-codes/discover_codes2.py" 2>/dev/null || true
 
             echo "[*] Stopping old Docker containers..."
             docker compose down --remove-orphans 2>/dev/null || true

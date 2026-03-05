@@ -63,7 +63,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Qatar Investor Portal Scrapers - a multi-service web scraping platform that extracts business activity data from the Qatar Investor Portal (https://investor.sw.gov.qa/). The system has dual scraper implementations (Python and Node.js), a web portal interface, and background services for Google Sheets integration and business activity codes management.
+Qatar Investor Portal Scrapers - a multi-service web scraping platform that extracts business activity data from the Qatar Investor Portal (https://investor.sw.gov.qa/). Services: **api-scraper** (activity codes, Python + Scrapling + Playwright), **API-CR** (company search & certificate download), **Portal** (terminal-style UI), **scrape-sw-codes** (2800+ codes → PostgreSQL, hourly sync), **scrape-sw-gsheet** (Scrapling → Google Sheets), **officernd** (OfficeRnD API offline clone).
 
 **Live Demo**: https://noaman.cloud
 
@@ -90,15 +90,15 @@ Qatar Investor Portal Scrapers - a multi-service web scraping platform that extr
 
 ┌─────────────────────────────────────────────────────────────────┐
 │                scrape-sw-codes (8084, HOST)                     │
-│  PM2: php -S (port 8084) → python3 discover_codes.py           │
-│  Host crontab: hourly smart sync (GMT+3)                       │
-│  → Host PostgreSQL (codesdb)                                   │
+│  PM2: php -S (port 8084) → discover_codes.py | fetch_codes_php  │
+│  Two fetch methods: FETCH_CODES (Python httpx) + FETCH_CODES_3 (PHP curl) │
+│  Host crontab: hourly smart sync (GMT+3) → Host PostgreSQL     │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
 │                   scrape-sw-gsheet (8085)                       │
-│  Scrapling scrapers → Google Sheets via API                     │
-│  /trigger-scrape-en.php                                         │
+│  PHP web (trigger + progress) → Docker: GSHEET_SCRAPER_EN/AR     │
+│  Scrapling + gspread → Google Sheets | trigger-scrape-en/ar.php  │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
@@ -113,23 +113,35 @@ Qatar Investor Portal Scrapers - a multi-service web scraping platform that extr
 
 ### Automated Deployment (GitHub Actions)
 Push to `main` triggers `.github/workflows/deploy.yml` which:
-1. SSHs into VPS, pulls latest code from `dev-noaman/single` repo
+1. SSHs into VPS, pulls latest code from `dev-noaman/single-window` repo
 2. Force-removes orphaned containers by name (prevents "container name already in use" conflicts)
 3. Rebuilds all Docker services with `--no-cache`
-4. Deploys scrape-sw-codes on host (PM2 + php-cli + pip + crontab)
-5. Redeploys officernd host services via PM2
-6. Reloads host nginx config
+4. Docker: api-scraper, API-CR, Portal, scrape-sw-gsheet (all with --no-cache rebuild)
+5. Host: scrape-sw-codes (PM2 php -S 8084, pip httpx asyncpg, crontab hourly)
+6. Host: officernd-api, officernd-bff via PM2
+7. Nginx: copies noaman.cloud.nginx.conf, reloads
 
 Manual trigger: Go to GitHub Actions > "Deploy to VPS" > Run workflow
 
 **GitHub Secrets required**: `VPS_HOST`, `VPS_USER`, `VPS_PASS`, `GH_TOKEN`
 
-### api-scraper (Python + Scrapling — replaces API-php and API-node)
+### api-scraper (Python 3.12 + Scrapling + Playwright)
 ```bash
 cd api-scraper
 pip install -r requirements.txt
-scrapling install
-python scraper.py --code 013001 --json
+python -m playwright install chromium
+# CLI: python scraper.py --code 013001 --json
+# HTTP: python server.py  # serves on 8080
+# Docker: docker-compose up -d --build
+```
+
+### API-CR (Company Search & Certificate Download)
+```bash
+cd API-CR
+pip install -r requirements.txt
+python -m playwright install chromium
+# Credentials: data/.env (USER_QID, USER_PASSWORD)
+# HTTP: python api_server.py  # serves on 8086
 # Docker: docker-compose up -d --build
 ```
 
@@ -142,10 +154,21 @@ docker-compose up -d --build
 
 ### scrape-sw-codes (runs on host, not Docker)
 ```bash
-# VPS: PM2 serves PHP on port 8084, crontab runs hourly sync
-# Local dev: docker-compose up -d --build
+# VPS: PM2 php -S on 8084, crontab hourly (cron-scheduler.sh)
+# Local: docker-compose up -d (optional)
 # Trigger: curl http://localhost:8084/trigger-fetch-codes.php
+# PHP fallback: curl http://localhost:8084/trigger-fetch-codes-php.php
 # Check: curl http://localhost:8084/check-update.php
+```
+
+### scrape-sw-gsheet (Docker: EN/AR scrapers + PHP web)
+```bash
+cd scrape-sw-gsheet
+# Requires: drive/google-credentials.json
+# Docker: docker-compose up -d --build
+# Triggers: /trigger-scrape-en.php, /trigger-scrape-ar.php
+# Progress: /progress-en.php, /progress-ar.php
+# Containers: SW_GSHEET, GSHEET_SCRAPER_EN, GSHEET_SCRAPER_AR, GSHEET_SCRAPER_WEB
 ```
 
 ## Key Service Endpoints
@@ -159,9 +182,14 @@ docker-compose up -d --build
 | API-CR | 8086 | `/download?cr={cr}&type={CR\|BOTH}` | Download certificate PDFs |
 | API-CR | 8086 | `/health` | Health check |
 | Portal | 8082 | `/` | Web interface |
-| scrape-sw-codes | 8084 | `/trigger-fetch-codes.php` | Trigger code fetch |
+| scrape-sw-codes | 8084 | `/trigger-fetch-codes.php` | Trigger Python fetch (FETCH_CODES) |
+| scrape-sw-codes | 8084 | `/trigger-fetch-codes-php.php` | Trigger PHP fetch (FETCH_CODES_3, fallback) |
+| scrape-sw-codes | 8084 | `/progress.php` | Real-time fetch progress |
 | scrape-sw-codes | 8084 | `/check-update.php` | Smart update checker |
-| scrape-sw-gsheet | 8085 | `/trigger-scrape-en.php` | Trigger EN scraper |
+| scrape-sw-gsheet | 8085 | `/trigger-scrape-en.php` | Trigger EN scraper (restarts GSHEET_SCRAPER_EN) |
+| scrape-sw-gsheet | 8085 | `/trigger-scrape-ar.php` | Trigger AR scraper (restarts GSHEET_SCRAPER_AR) |
+| scrape-sw-gsheet | 8085 | `/progress-en.php` | EN scraper progress |
+| scrape-sw-gsheet | 8085 | `/progress-ar.php` | AR scraper progress |
 | officernd API | 8087 | `/health` | OfficeRnD API clone |
 | officernd BFF | 8088 | `/` | OfficeRnD sync web UI (NestJS+React) |
 | officernd BFF | 8088 | `/api/officernd/status` | Sync status (cached 5s) |
@@ -190,13 +218,26 @@ All scrapers return:
 }
 ```
 
+## Nginx Routing (noaman.cloud)
+
+| Path | Proxies to | Service |
+|------|-------------|---------|
+| `/` | 8082 | Portal |
+| `/api-scraper/` | 8080 | api-scraper |
+| `/api-cr/` | 8086 | API-CR |
+| `/sw-codes/` | 8084 | scrape-sw-codes (PM2 PHP) |
+| `/gsheet-scraper/` | 8085 | scrape-sw-gsheet (PHP web container) |
+| `/officernd/` | 8088 | officernd-bff |
+| `/officernd-api/` | 8087 | officernd-api |
+| `/health` | 8082/health | Portal health |
+
 ## Technology Stack
 
-- **api-scraper**: Python 3.12, Scrapling (StealthyFetcher), HTTP server (replaces API-php + API-node)
-- **API-CR**: Python 3.12, Scrapling (StealthyFetcher), HTTP server
+- **api-scraper**: Python 3.12, Scrapling (StealthyFetcher), Playwright Chromium, built-in HTTP server
+- **API-CR**: Python 3.12, Scrapling (StealthyFetcher), Playwright Chromium, HTTP server (data/.env for credentials)
 - **Portal**: PHP 8.4, Tailwind CSS, Nginx
-- **scrape-sw-codes**: Python (Scrapling AsyncFetcher, asyncpg), PHP-CLI, PostgreSQL 16, PM2 (host service)
-- **scrape-sw-gsheet**: Python, Scrapling (StealthyFetcher), Google Sheets API
+- **scrape-sw-codes**: Python (httpx, asyncpg) + PHP curl (fetch_codes_php.php), PostgreSQL 16, PM2 (host service)
+- **scrape-sw-gsheet**: Python 3.12, Scrapling (StealthyFetcher), Playwright, gspread, oauth2client, PHP 8.2-CLI (trigger/progress web)
 - **officernd-api**: Python 3.10+, FastAPI, Uvicorn, SQLAlchemy, asyncio
 - **officernd-bff**: NestJS 10, React 18, Vite, TypeScript, cache-manager
 
@@ -213,12 +254,7 @@ Docker containers connect via `host.docker.internal:5432`. Host services (office
 
 ## Container Names
 
-All containers follow naming pattern for VPS path `/root/scrapers/`:
-- `API-SCRAPER`, `API-CR`, `PORTAL`
-- `SW_GSHEET`
-- `sw-codes-web` (PHP host service via PM2, php-cli on port 8084)
-- `officernd-api` (Python host service via PM2, uvicorn on port 8087)
-- `officernd-bff` (Node.js host service via PM2, NestJS on port 8088)
+VPS path `/root/scrapers/`. Docker: `API-SCRAPER`, `API-CR`, `PORTAL`, `SW_GSHEET`, `GSHEET_SCRAPER_EN`, `GSHEET_SCRAPER_AR`, `GSHEET_SCRAPER_WEB`. Host (PM2): `sw-codes-web` (port 8084), `officernd-api` (8087), `officernd-bff` (8088).
 
 ## Key Files
 
@@ -226,11 +262,17 @@ All containers follow naming pattern for VPS path `/root/scrapers/`:
 - **api-scraper/server.py**: Python HTTP server (replaces API-php/scraper.php + API-node/server.js)
 - **API-CR/auto_search_company.py**: Company search and certificate download (`run_company_search` for single CR, `search_companies_by_query` for name/CR multi-result search)
 - **API-CR/api_server.py**: HTTP API wrapper for certificate downloads and company search
-- **Portal/index.php**: Web portal with CR search/download modal (supports search by CR number, English name, or Arabic name with multi-result selection)
-- **scrape-sw-codes/discover_codes.py**: Business codes fetcher (2800+ codes, three-strategy: last-page-first / full no-skip / full with smart-skip)
-- **scrape-sw-codes/trigger-fetch-codes.php**: Trigger endpoint — resets progress file, restarts container, checks for crash and returns logs
-- **scrape-sw-codes/progress.php**: Real-time progress endpoint — reads `/tmp/fetch_progress.json`
-- **scrape-sw-codes/Dockerfile.cron**: Cron scheduler (hourly smart sync)
+- **Portal/index.php**: Terminal-style UI — CODE (api-scraper), FETCH_CODES, FETCH_CODES_3, SCRAPE_ENG (gsheet), SCRAPE_CR (api-cr modal: CR/EN/AR search, certificate download), OfficeRnD link
+- **scrape-sw-codes/discover_codes.py**: Business codes fetcher (httpx, 2800+ codes, three-strategy: last-page-first / full no-skip / full with smart-skip)
+- **scrape-sw-codes/fetch_codes_php.php**: Pure PHP fetch (curl, no Python) — fallback when Python has SSL issues
+- **scrape-sw-codes/trigger-fetch-codes.php**: Trigger Python fetch — resets progress, runs discover_codes.py, returns logs
+- **scrape-sw-codes/trigger-fetch-codes-php.php**: Trigger PHP fetch — runs fetch_codes_php.php
+- **scrape-sw-codes/progress.php**: Real-time progress — reads `/tmp/fetch_progress.json`
+- **scrape-sw-gsheet/trigger-scrape-en.php**: Restarts GSHEET_SCRAPER_EN container
+- **scrape-sw-gsheet/trigger-scrape-ar.php**: Restarts GSHEET_SCRAPER_AR container
+- **scrape-sw-gsheet/progress-en.php**, **progress-ar.php**: Scraper progress from /tmp
+- **scrape-sw-gsheet/scrape-EN.py**, **scrape-AR.py**: Scrapling + gspread, write to Google Sheets "Filter"
+- **scrape-sw-gsheet/progress_writer.py**: Real-time progress for EN/AR scrapers
 - **scrape-sw-codes/cron-scheduler.sh**: Smart sync script (checks API vs DB count before fetching)
 - **scrape-sw-codes/check-update.php**: Lightweight API vs DB comparison (fetches 1 record)
 - **officernd/bff/src/main.ts**: NestJS BFF bootstrap (port 8088)
@@ -243,6 +285,7 @@ All containers follow naming pattern for VPS path `/root/scrapers/`:
 - **officernd/api/routes/__init__.py**: Shared helpers (paginated_query, get_single, apply_filters)
 - **officernd/api/sync_routes.py**: FastAPI sync endpoints (status, progress, phases, run, companies, export)
 - **officernd/sync/run_by_company.py**: 3-phase async sync orchestrator
+- **tests/fetch-codes.spec.js**: Playwright e2e tests for FETCH_CODES and FETCH_CODES_3 (against live noaman.cloud)
 
 ## Build and Run: officernd-bff
 
@@ -259,7 +302,7 @@ npm run start:prod                                     # Run on port 8088
 ## Deployment Notes
 
 - **GitHub Actions** (`.github/workflows/deploy.yml`) is the primary deployment method — triggers on push to `main`
-- **VPS repo**: `dev-noaman/single` (GitHub). VPS path: `/root/scrapers/`. Workflow auto-sets remote URL to prevent stale repo issues.
+- **VPS repo**: `dev-noaman/single-window` (GitHub). VPS path: `/root/scrapers/`. Workflow auto-sets remote URL to prevent stale repo issues.
 - **Portal Dockerfile** is written directly via heredoc in the workflow (VPS previously had a stale nginx:alpine Dockerfile from old `dev-noaman/scrapers` repo)
 - **`scripts/Deploy-to-Docker.ps1`** exists for manual PowerShell deployment but paths assume running from project root (currently broken — use GitHub Actions instead)
 - **officernd-api** runs as PM2 host service (`uvicorn api.main:app --host 0.0.0.0 --port 8087`), config/.env is preserved across deploys
@@ -282,8 +325,24 @@ npm run start:prod                                     # Run on port 8088
 - **Stale code deletion**: After a complete fetch (all pages successfully processed), compares all DB codes against all API codes and deletes any that no longer exist in the API. Safety guard: deletion only runs when `fetch_complete=True` — skipped on errors, exceptions, smart-skip (incomplete data), or fast-path last-page-only syncs. Prints which codes were deleted.
 - **Real-time progress**: `discover_codes.py` writes `/tmp/fetch_progress.json` in real-time. Portal polls `progress.php` for live page count, new codes, updated codes, and skipped (unchanged) codes.
 - **Host architecture**: Runs directly on the VPS (no Docker). PM2 serves PHP files via `php -S` on port 8084. `trigger-fetch-codes.php` runs `python3 discover_codes.py` as a background process. Includes: duplicate-run prevention (`pgrep`), progress file reset to `"pending"` before launch, process health check with log tail on failure. Non-JSON API responses are logged with Content-Type and first 300 chars for debugging.
-- **Portal monitoring guards**: `monitorFetchProgress()` requires seeing at least one `"running"` or `"starting"` status before accepting `"completed"` (`seenRunning` flag). Also has a 30s stuck-timeout: if still `"pending"` after 10 polls, shows an error. Crash/error logs from `trigger-fetch-codes.php` are displayed directly in the terminal.
+- **Portal fetch methods**: Two buttons — **FETCH_CODES** (primary: Python httpx, smart check-first) and **FETCH_CODES_3** (fallback: pure PHP curl). Recommended: use FETCH_CODES first; use FETCH_CODES_3 if Python/SSL fails.
+- **Portal monitoring guards**: `monitorFetchProgress()` requires seeing at least one `"running"` or `"starting"` status before accepting `"completed"` (`seenRunning` flag). Stuck-timeout: if still `"pending"` after 40 polls (~2 min), shows an error. Crash/error logs from trigger endpoints are displayed in the terminal.
 - **Portal error surfacing**: `Portal/index.php` fetch-codes flow reads the JSON body from `trigger-fetch-codes.php` even on non-2xx responses, so the real error is shown in the terminal instead of a generic "HTTP Error: 500".
+
+## scrape-sw-gsheet Features
+
+- **Containers**: SW_GSHEET (scrape_codes.py), GSHEET_SCRAPER_EN (scrape-EN.py), GSHEET_SCRAPER_AR (scrape-AR.py), GSHEET_SCRAPER_WEB (PHP trigger + progress on 8085)
+- **Credentials**: `drive/google-credentials.json` (Google Service Account) required
+- **Target**: Google Sheets "Filter" worksheet, EN and AR tabs
+- **Trigger**: PHP restarts container; scraper writes progress to /tmp; Portal polls progress-en.php / progress-ar.php
+- **Scrapling**: StealthyFetcher + Playwright for Qatar investor portal, gspread for Sheets API
+
+## API-CR Features
+
+- **Credentials**: `data/.env` with USER_QID, USER_PASSWORD (Qatar ID portal login)
+- **Search**: Single CR (`/search?cr=`), or multi-result by query (`/search?q=`) — CR number, EN name, or AR name
+- **Download**: PDF certificates (CR only or CR+CP) via `/download?cr=&type=&format=base64`
+- **Cache**: request_cache.json, session_cache.json in data/ (6-day validity)
 
 ## OfficeRnD Sync Features
 
@@ -304,9 +363,6 @@ npm run start:prod                                     # Run on port 8088
 - **Progress polling**: 1.5s interval for near-realtime progress updates
 - **API coverage**: 80/80 GET endpoints from OfficeRnD reference docs implemented (100%). 63 write endpoints (POST/PUT/DELETE) intentionally skipped (read-only clone).
 
-## TypeScript Configuration (API-node)
+## Legacy / Deprecated
 
-- Target: ES2022, Module: CommonJS
-- Strict mode enabled, source maps enabled
-- Output: `./dist`, no unused variables allowed
-- Compile with `npm run build` before running
+- **API-php**, **API-node**: Replaced by api-scraper. Deploy removes API-PHP, API-NODE containers.
