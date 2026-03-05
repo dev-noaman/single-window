@@ -4,7 +4,6 @@ import os
 import time
 import asyncpg
 import httpx
-import certifi
 from urllib.parse import urlparse
 
 # API endpoint for ALL activities (no industry filter)
@@ -100,10 +99,11 @@ async def fetch_single_page(page_num, client=None):
     owns_client = client is None
     try:
         if owns_client:
+            # MOCI API (investor.sw.gov.qa) uses cert chain not in system/certifi bundle on VPS
             client = httpx.AsyncClient(
                 headers=HEADERS,
                 timeout=TIMEOUT_SECONDS,
-                verify=certifi.where(),
+                verify=False,
             )
         response = await client.get(url)
         if response.status_code != 200:
