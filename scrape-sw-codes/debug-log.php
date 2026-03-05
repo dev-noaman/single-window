@@ -27,6 +27,14 @@ if (file_exists($logFile)) {
     $result['log_tail'] = 'file not found';
 }
 
+// Read debug log
+$debugLog = '/tmp/debug_discover.log';
+if (file_exists($debugLog)) {
+    $result['debug_log'] = array_slice(file($debugLog, FILE_IGNORE_NEW_LINES), -30);
+} else {
+    $result['debug_log'] = 'file not found';
+}
+
 // Check python3 and scrapling availability
 exec("python3 -c 'import scrapling; print(scrapling.__version__)' 2>&1", $pyOut, $pyCode);
 $result['scrapling_check'] = ['exit_code' => $pyCode, 'output' => $pyOut];

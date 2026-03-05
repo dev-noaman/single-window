@@ -3,9 +3,8 @@ import json
 import os
 import time
 import asyncpg
+import httpx
 from urllib.parse import urlparse
-
-from scrapling.fetchers import AsyncFetcher
 
 # API endpoint for ALL activities (no industry filter)
 ALL_ACTIVITIES_URL = (
@@ -90,24 +89,23 @@ async def get_existing_count(pool):
         return result or 0
 
 
-async def fetch_single_page(page_num):
+async def fetch_single_page(page_num, client=None):
     """
-    Fetch one page from the API using Scrapling AsyncFetcher.
+    Fetch one page from the API using httpx.
     Returns (content, total_pages, total_elements, success).
     On any error: ([], 1, 0, False).
     """
     url = f"{ALL_ACTIVITIES_URL}page={page_num}&size={PAGE_SIZE}"
+    owns_client = client is None
     try:
-        response = await AsyncFetcher.async_get(
-            url,
-            headers=HEADERS,
-            timeout=TIMEOUT_SECONDS * 1000,
-        )
-        if response.status != 200:
-            print(f"HTTP {response.status} on page {page_num}")
+        if owns_client:
+            client = httpx.AsyncClient(headers=HEADERS, timeout=TIMEOUT_SECONDS)
+        response = await client.get(url)
+        if response.status_code != 200:
+            print(f"HTTP {response.status_code} on page {page_num}")
             return [], 1, 0, False
 
-        body = response.body
+        body = response.text
         if not body or not body.strip():
             content_type = response.headers.get('content-type', '')
             print(f"Empty response on page {page_num} (Content-Type: {content_type})")
@@ -117,7 +115,7 @@ async def fetch_single_page(page_num):
             data = json.loads(body)
         except json.JSONDecodeError:
             content_type = response.headers.get('content-type', '')
-            preview = body[:300].decode('utf-8', errors='replace').replace('\n', ' ')
+            preview = body[:300].replace('\n', ' ')
             print(f"Non-JSON response on page {page_num} (Content-Type: {content_type}): {preview}")
             return [], 1, 0, False
 
@@ -136,6 +134,9 @@ async def fetch_single_page(page_num):
     except Exception as e:
         print(f"Error fetching page {page_num}: {type(e).__name__}: {e}")
         return [], 1, 0, False
+    finally:
+        if owns_client and client:
+            await client.aclose()
 
 
 async def save_page_to_db(pool, content, all_api_codes):
@@ -286,12 +287,18 @@ async def main():
     print()
 
     update_progress("starting", "Initializing...")
+    # #region agent log
+    _dlog("main_entered", hypothesisId="H1", location="discover_codes.py:main")
+    # #endregion
 
     db_config = parse_postgres_url(DATABASE_URL)
 
     if not await wait_for_db(db_config):
         print("\n✗ Failed to connect to database")
         update_progress("error", "Failed to connect to database")
+        # #region agent log
+        _dlog("db_connect_failed", hypothesisId="H1", location="discover_codes.py:main")
+        # #endregion
         return
 
     pool = await asyncpg.create_pool(
@@ -319,7 +326,13 @@ async def main():
         fetch_complete = False
 
         # Peek at API metadata (page 1) to choose fetch strategy
+        # #region agent log
+        _dlog("fetching_page1", hypothesisId="H4", location="discover_codes.py:main")
+        # #endregion
         _, total_pages, total_elements, ok = await fetch_single_page(1)
+        # #region agent log
+        _dlog("page1_result", ok=ok, total_pages=total_pages, total_elements=total_elements, hypothesisId="H4")
+        # #endregion
 
         if ok and total_elements > existing_count and total_pages > 0:
             # API has more codes — check last page first (fast path)
@@ -419,5 +432,26 @@ async def main():
 
 
 if __name__ == "__main__":
-    update_progress("starting", "Starting Python script...")
-    asyncio.run(main())
+    # #region agent log
+    import traceback as _tb
+    _LOG = "/tmp/debug_discover.log"
+    def _dlog(msg, **kw):
+        try:
+            import json as _j
+            with open(_LOG, "a") as _f:
+                _f.write(_j.dumps({"sessionId":"650286","ts":time.time(),"msg":msg,**kw})+"\n")
+        except: pass
+    _dlog("script_entry", hypothesisId="H1-H4", location="discover_codes.py:__main__")
+    # #endregion
+    try:
+        update_progress("starting", "Starting Python script...")
+        # #region agent log
+        _dlog("progress_starting_written", hypothesisId="H3")
+        # #endregion
+        asyncio.run(main())
+    except Exception as _e:
+        # #region agent log
+        _dlog("fatal_error", error=str(_e), tb=_tb.format_exc(), hypothesisId="H1-H4")
+        # #endregion
+        update_progress("error", f"Script crashed: {_e}")
+        raise
