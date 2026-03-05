@@ -423,13 +423,13 @@
                                 pendingChecks = 0;
                             }
 
-                            // Detect stuck container: if still "pending" after ~30s, abort
+                            // Detect stuck process: if still "pending" after ~60s, abort
                             if (status === 'pending') {
                                 pendingChecks++;
-                                if (pendingChecks >= 10) { // 10 × 3s = 30s
+                                if (pendingChecks >= 20) { // 20 × 3s = 60s (slow import on host)
                                     clearInterval(progressInterval);
-                                    log('Container did not start within 30s — fetch may have failed.', 'error');
-                                    log('Try again or check docker logs for SW_CODES_PYTHON.', 'error');
+                                    log('Fetch process did not start within 60s — may have failed.', 'error');
+                                    log('Try again or check /tmp/discover_codes.log on the server.', 'error');
                                     resolve();
                                     return;
                                 }

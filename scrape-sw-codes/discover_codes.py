@@ -419,4 +419,5 @@ async def main():
 
 
 if __name__ == "__main__":
+    update_progress("starting", "Starting Python script...")
     asyncio.run(main())
