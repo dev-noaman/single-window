@@ -131,7 +131,7 @@ jobs:
               if [ -f "$REPO_DIR/$svc/docker-compose.yml" ]; then
                 echo ""
                 echo "[*] Deploying $svc..."
-                cd "$REPO_DIR/$svc"
+                cd "$REPO_DIR/$svc" || { echo "[FATAL] cd $svc failed"; exit 1; }
                 docker compose down --remove-orphans 2>/dev/null || true
                 # Force remove any leftover containers by name (handles orphaned containers)
                 for cname in $(docker compose config --services 2>/dev/null); do
@@ -142,8 +142,8 @@ jobs:
                 grep 'container_name:' docker-compose.yml 2>/dev/null | sed -n 's/.*container_name:[[:space:]]*\([^[:space:]]*\).*/\1/p' | while read cn; do
                   [ -n "$cn" ] && docker rm -f "$cn" 2>/dev/null || true
                 done
-                docker compose build --no-cache --quiet
-                docker compose up -d
+                docker compose build --no-cache --quiet || { echo "[FATAL] docker compose build failed for $svc"; exit 1; }
+                docker compose up -d || { echo "[FATAL] docker compose up failed for $svc"; docker compose logs --tail=50; exit 1; }
                 # Verify Portal container content
                 if [ "$svc" = "Portal" ]; then
                   echo "[DEBUG] Portal container check:"
@@ -162,9 +162,9 @@ jobs:
             cd "$REPO_DIR/scrape-sw-codes"
 
             echo "[*] Killing stale processes..."
-            pkill -f '[d]iscover_codes\.py' 2>/dev/null || true
-            pkill -f 'php.*fetch_codes_php' 2>/dev/null || true
-            pkill -f '[d]iscover_codes2\.py' 2>/dev/null || true
+            # Use path-based patterns to avoid matching the deploy script (which contains these strings)
+            pkill -f 'scrape-sw-codes/discover_codes\.py' 2>/dev/null || true
+            pkill -f 'scrape-sw-codes/.*fetch_codes_php' 2>/dev/null || true
             rm -f /tmp/fetch_progress.json 2>/dev/null || true
             rm -f "$REPO_DIR/scrape-sw-codes/trigger-fetch-codes2.php" "$REPO_DIR/scrape-sw-codes/discover_codes2.py" 2>/dev/null || true
 
@@ -218,6 +218,8 @@ jobs:
             pm2 save 2>/dev/null || true
 
             # --- Nginx reload ---
+            echo ""
+            echo "[*] Reloading nginx..."
             if [ -f "$REPO_DIR/Portal/noaman.cloud.nginx.conf" ]; then
               cp "$REPO_DIR/Portal/noaman.cloud.nginx.conf" /etc/nginx/sites-available/noaman.cloud
               nginx -t 2>&1 && systemctl reload nginx && echo "[OK] Nginx reloaded" || echo "[WARN] Nginx config test failed"
