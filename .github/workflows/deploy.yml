@@ -21,7 +21,7 @@ jobs:
           script: |
             set -e
             REPO_DIR="/root/scrapers"
-            REPO_URL="https://${{ secrets.GH_TOKEN }}@github.com/dev-noaman/single.git"
+            REPO_URL="https://${{ secrets.GH_TOKEN }}@github.com/dev-noaman/single-window.git"
 
             echo "=========================================="
             echo "  Deploying to VPS"
@@ -177,7 +177,7 @@ jobs:
 
             # Install Python dependencies (Scrapling for discover_codes.py, asyncpg for DB)
             pip3 install --break-system-packages -q scrapling asyncpg 2>&1 | tail -3
-            scrapling install 2>&1 | tail -5 || true
+            python3 -m playwright install --with-deps chromium 2>&1 | tail -10 || true
 
             # PM2: serve PHP files on port 8084
             pm2 delete sw-codes-web 2>/dev/null || true

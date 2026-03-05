@@ -10,8 +10,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Scrapling browser dependencies (Chromium)
-RUN scrapling install
+# Install Chromium + all OS-level dependencies (libnss3, libatk, etc.)
+RUN python -m playwright install --with-deps chromium
 
 COPY scraper.py server.py ./
 
