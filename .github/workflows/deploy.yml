@@ -164,6 +164,7 @@ jobs:
             echo "[*] Killing stale processes..."
             pkill -f '[d]iscover_codes\.py' 2>/dev/null || true
             pkill -f '[d]iscover_codes2\.py' 2>/dev/null || true
+            pkill -f 'php.*fetch_codes_php' 2>/dev/null || true
             rm -f /tmp/fetch_progress.json 2>/dev/null || true
 
             echo "[*] Stopping old Docker containers..."
@@ -191,57 +192,29 @@ jobs:
             (crontab -l 2>/dev/null | grep -v 'sw-codes-cron' ; echo "0 * * * * TZ=Asia/Qatar $REPO_DIR/scrape-sw-codes/cron-scheduler.sh >> /var/log/sw-codes-cron.log 2>&1 # sw-codes-cron") | crontab -
             echo "[OK] scrape-sw-codes deployed (host)"
 
-            # --- Host service: officernd-api (Python + PM2) ---
+            # --- Host service: officernd (optional - continue on error so fetch-codes always deploys) ---
+            set +e
             echo ""
             echo "[*] Deploying officernd-api..."
-            cd "$REPO_DIR/officernd"
-
-            # Preserve .env (don't overwrite production config)
-            if [ ! -f config/.env ]; then
-              echo "[WARN] officernd config/.env not found - create it manually"
-            else
-              # Fix host.docker.internal for host services
-              sed -i 's/host\.docker\.internal/localhost/g' config/.env
-            fi
-
-            # Install Python dependencies
-            if [ -f config/requirements.txt ]; then
-              pip3 install --break-system-packages -q -r config/requirements.txt 2>&1 | tail -3
-            fi
-
-            # Auto-migrate database
-            if [ -f "$REPO_DIR/scripts/setup-databases.py" ]; then
-              python3 "$REPO_DIR/scripts/setup-databases.py" "$REPO_DIR/officernd" 2>&1 || echo "[WARN] DB setup had warnings (tables may exist)"
-            fi
-
-            # Restart PM2 process
-            pm2 delete officernd-api 2>/dev/null || true
-            pm2 start "uvicorn api.main:app --host 0.0.0.0 --port 8087" --name officernd-api
-            echo "[OK] officernd-api deployed"
-
-            # --- Host service: officernd-bff (NestJS + React + PM2) ---
-            echo ""
+            cd "$REPO_DIR/officernd" 2>/dev/null && (
+              [ -f config/.env ] && sed -i 's/host\.docker\.internal/localhost/g' config/.env
+              [ -f config/requirements.txt ] && pip3 install --break-system-packages -q -r config/requirements.txt 2>&1 | tail -2
+              [ -f "$REPO_DIR/scripts/setup-databases.py" ] && python3 "$REPO_DIR/scripts/setup-databases.py" "$REPO_DIR/officernd" 2>&1 || true
+              pm2 delete officernd-api 2>/dev/null || true
+              pm2 start "uvicorn api.main:app --host 0.0.0.0 --port 8087" --name officernd-api
+              echo "[OK] officernd-api deployed"
+            ) || echo "[WARN] officernd-api skipped/failed"
             echo "[*] Deploying officernd-bff..."
-            cd "$REPO_DIR/officernd/bff"
-
-            # Preserve .env
-            if [ ! -f .env ]; then
-              printf 'OFFICERND_API_URL=http://localhost:8087\nOFFICERND_ORG_SLUG=arafat-business-centers\nPORT=8088\n' > .env
-              echo "[INFO] Created default .env for officernd-bff"
-            fi
-
-            # Install and build
-            npm install --loglevel=error --no-audit --no-fund 2>&1 | tail -3
-            cd frontend && npm install --loglevel=error --no-audit --no-fund 2>&1 | tail -3 && npm run build && cd ..
-            npm run build
-
-            # Restart PM2 process
-            pm2 delete officernd-bff 2>/dev/null || true
-            pm2 start dist/main.js --name officernd-bff
-            echo "[OK] officernd-bff deployed"
-
-            # --- Save PM2 process list ---
-            pm2 save
+            cd "$REPO_DIR/officernd/bff" 2>/dev/null && (
+              [ ! -f .env ] && printf 'OFFICERND_API_URL=http://localhost:8087\nPORT=8088\n' > .env
+              npm install --loglevel=error --no-audit --no-fund 2>&1 | tail -2
+              (cd frontend && npm install --loglevel=error --no-audit --no-fund 2>&1 | tail -2 && npm run build) && npm run build
+              pm2 delete officernd-bff 2>/dev/null || true
+              pm2 start dist/main.js --name officernd-bff
+              echo "[OK] officernd-bff deployed"
+            ) || echo "[WARN] officernd-bff skipped/failed"
+            set -e
+            pm2 save 2>/dev/null || true
 
             # --- Nginx reload ---
             if [ -f "$REPO_DIR/Portal/noaman.cloud.nginx.conf" ]; then

@@ -52,8 +52,11 @@
                 <button id="fetchCodesBtn" class="cursor-pointer uppercase font-bold transition-all p-1.5 sm:p-2 text-xs sm:text-sm border border-gray-800 text-yellow-400 hover:bg-yellow-400 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed">
                     🔄 FETCH_CODES
                 </button>
-                <button id="fetchCodes2Btn" class="cursor-pointer uppercase font-bold transition-all p-1.5 sm:p-2 text-xs sm:text-sm border border-yellow-600 text-yellow-500 hover:bg-yellow-500 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed" title="Simple curl-based fetch (alternative)">
+                <button id="fetchCodes2Btn" class="cursor-pointer uppercase font-bold transition-all p-1.5 sm:p-2 text-xs sm:text-sm border border-yellow-600 text-yellow-500 hover:bg-yellow-500 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed" title="curl-based fetch">
                     🔄 FETCH_CODES_2
+                </button>
+                <button id="fetchCodes3Btn" class="cursor-pointer uppercase font-bold transition-all p-1.5 sm:p-2 text-xs sm:text-sm border border-green-600 text-green-500 hover:bg-green-500 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed" title="Pure PHP fetch (best on VPS)">
+                    🔄 FETCH_CODES_3
                 </button>
                 <button id="scrapeEngBtn" class="cursor-pointer uppercase font-bold transition-all p-1.5 sm:p-2 text-xs sm:text-sm border border-gray-800 text-cyan-400 hover:bg-cyan-400 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed">
                     📊 SCRAPE_ENG
@@ -148,6 +151,7 @@
         const execBtn = document.getElementById('execBtn');
         const fetchCodesBtn = document.getElementById('fetchCodesBtn');
         const fetchCodes2Btn = document.getElementById('fetchCodes2Btn');
+        const fetchCodes3Btn = document.getElementById('fetchCodes3Btn');
         const scrapeEngBtn = document.getElementById('scrapeEngBtn');
         const scrapeCrBtn = document.getElementById('scrapeCrBtn');
         
@@ -417,6 +421,33 @@
             } finally {
                 fetchCodes2Btn.disabled = false;
                 fetchCodes2Btn.textContent = '🔄 FETCH_CODES_2';
+                const sep = document.createElement('div');
+                sep.className = 'border-b border-dashed border-gray-800 my-5';
+                terminal.appendChild(sep);
+                terminal.scrollTop = terminal.scrollHeight;
+            }
+        });
+
+        fetchCodes3Btn.addEventListener('click', async () => {
+            fetchCodes3Btn.disabled = true;
+            fetchCodes3Btn.textContent = '⏳ FETCHING...';
+            log('Initiating FETCH_CODES_3 (PHP) — pure PHP curl...');
+            try {
+                let r = await fetch('/sw-codes/trigger-fetch-codes-php.php');
+                let res = await r.json();
+                if (!res.success && res.message && res.message.includes('already running')) {
+                    log('PHP fetch already running. Force restarting...', 'info');
+                    r = await fetch('/sw-codes/trigger-fetch-codes-php.php?force=1');
+                    res = await r.json();
+                }
+                if (!res.success) throw new Error(res.message || 'Failed to start');
+                log('✓ Fetch Codes 3 (PHP) started.', 'success');
+                await monitorFetchProgress();
+            } catch (e) {
+                log(`Fetch Codes 3 failed: ${e.message}`, 'error');
+            } finally {
+                fetchCodes3Btn.disabled = false;
+                fetchCodes3Btn.textContent = '🔄 FETCH_CODES_3';
                 const sep = document.createElement('div');
                 sep.className = 'border-b border-dashed border-gray-800 my-5';
                 terminal.appendChild(sep);
