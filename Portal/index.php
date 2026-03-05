@@ -64,10 +64,6 @@
             </div>
         </div>
         <form id="commandForm" class="flex flex-col sm:flex-row gap-2 sm:gap-4 sm:items-center">
-            <select id="engineSelect" class="bg-gray-900 border border-gray-800 text-term-accent p-2 text-sm sm:text-base outline-none focus:border-term-accent">
-                <option value="php">ENGINE_01 (PHP)</option>
-                <option value="node">ENGINE_02 (NODE)</option>
-            </select>
             <div class="flex gap-2 sm:gap-4 items-center flex-1">
                 <span class="text-sm sm:text-base">CODE:</span>
                 <input type="text" id="codeInput" placeholder="013001" autocomplete="off" required pattern="[0-9]+" class="bg-gray-900 border border-gray-800 text-term-accent p-2 text-sm sm:text-base outline-none focus:border-term-accent flex-1 min-w-0">
@@ -146,7 +142,6 @@
         const terminal = document.getElementById('terminal');
         const form = document.getElementById('commandForm');
         const codeInput = document.getElementById('codeInput');
-        const engineSelect = document.getElementById('engineSelect');
         const execBtn = document.getElementById('execBtn');
         const fetchCodesBtn = document.getElementById('fetchCodesBtn');
         const scrapeEngBtn = document.getElementById('scrapeEngBtn');
@@ -230,7 +225,6 @@
             e.preventDefault();
             
             const code = codeInput.value.trim();
-            const engine = engineSelect.value;
             
             if (!code) {
                 log('Activity code is required.', 'error');
@@ -239,16 +233,12 @@
 
             // Disable UI
             codeInput.disabled = true;
-            engineSelect.disabled = true;
             execBtn.disabled = true;
 
-            // Use relative URLs that go through nginx reverse proxy
-            const endpoint = engine === 'php' 
-                ? `/api-php/scraper.php?code=${code}`
-                : `/api-node/scrape?code=${code}`;
+            // Use relative URL through nginx reverse proxy
+            const endpoint = `/api-scraper/scrape?code=${code}`;
 
-            const engineLabel = engine === 'php' ? 'PHP' : 'NODE';
-            log(`Initiating sequence for Code: ${code} using ${engineLabel} engine...`);
+            log(`Initiating sequence for Code: ${code}...`);
             log(`Connecting to endpoint: ${window.location.origin}${endpoint}`);
 
             try {
@@ -285,7 +275,6 @@
             } finally {
                 // Re-enable UI
                 codeInput.disabled = false;
-                engineSelect.disabled = false;
                 execBtn.disabled = false;
                 codeInput.focus();
                 terminal.scrollTop = terminal.scrollHeight;

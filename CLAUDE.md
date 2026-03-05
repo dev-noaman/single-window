@@ -73,20 +73,20 @@ Qatar Investor Portal Scrapers - a multi-service web scraping platform that extr
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Portal (8082)                           │
 │                    PHP 8.4 + Tailwind CSS                       │
-│              Terminal-style UI with engine selection            │
-└─────────────────┬───────────────────────┬───────────────────────┘
-                  │                       │
-        ┌─────────▼─────────┐   ┌─────────▼─────────┐
-        │   API-php (8080)  │   │  API-node (8081)  │
-        │ Python+Playwright │   │   TS + Playwright │
-        │ /scraper.php?code │   │   /scrape?code    │
-        └───────────────────┘   └───────────────────┘
-                                          │
-                              ┌───────────▼───────────┐
-                              │    API-CR (8086)      │
-                              │  Python + Playwright  │
-                              │  /search, /download   │
-                              └───────────────────────┘
+│                      Terminal-style UI                          │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+                 ┌───────────▼───────────┐
+                 │  api-scraper (8080)   │
+                 │   Python + Scrapling  │
+                 │   /scrape?code        │
+                 └───────────────────────┘
+                             │
+                 ┌───────────▼───────────┐
+                 │    API-CR (8086)      │
+                 │   Python + Scrapling  │
+                 │  /search, /download   │
+                 └───────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
 │                scrape-sw-codes (8084, HOST)                     │
@@ -97,7 +97,7 @@ Qatar Investor Portal Scrapers - a multi-service web scraping platform that extr
 
 ┌─────────────────────────────────────────────────────────────────┐
 │                   scrape-sw-gsheet (8085)                       │
-│  EN scrapers → Google Sheets via API                            │
+│  Scrapling scrapers → Google Sheets via API                     │
 │  /trigger-scrape-en.php                                         │
 └─────────────────────────────────────────────────────────────────┘
 
@@ -124,22 +124,11 @@ Manual trigger: Go to GitHub Actions > "Deploy to VPS" > Run workflow
 
 **GitHub Secrets required**: `VPS_HOST`, `VPS_USER`, `VPS_PASS`, `GH_TOKEN`
 
-### API-node (TypeScript + Playwright)
+### api-scraper (Python + Scrapling — replaces API-php and API-node)
 ```bash
-cd API-node
-npm install
-npm run build          # Compile TypeScript to dist/
-npm start              # Run server.js
-npm run dev            # Build + start combined
-npm run test           # Run test-json-only.js
-# Docker: docker-compose up -d --build
-```
-
-### API-php (Python + Playwright)
-```bash
-cd API-php
+cd api-scraper
 pip install -r requirements.txt
-playwright install chromium
+scrapling install
 python scraper.py --code 013001 --json
 # Docker: docker-compose up -d --build
 ```
@@ -163,9 +152,8 @@ docker-compose up -d --build
 
 | Service | Port | Endpoint | Description |
 |---------|------|----------|-------------|
-| API-php | 8080 | `/scraper.php?code={code}` | Python Playwright scraper |
-| API-node | 8081 | `/scrape?code={code}` | Node.js TypeScript scraper |
-| API-node | 8081 | `/health` | Health check |
+| api-scraper | 8080 | `/scrape?code={code}` | Python Scrapling scraper (replaces API-php + API-node) |
+| api-scraper | 8080 | `/health` | Health check |
 | API-CR | 8086 | `/search?cr={cr_number}` | Company search by CR (single result) |
 | API-CR | 8086 | `/search?q={query}` | Search by CR, EN name, or AR name (multiple results) |
 | API-CR | 8086 | `/download?cr={cr}&type={CR\|BOTH}` | Download certificate PDFs |
@@ -204,12 +192,11 @@ All scrapers return:
 
 ## Technology Stack
 
-- **API-node**: TypeScript, Node.js 20, Playwright, Winston (logging)
-- **API-php**: Python 3.11, Playwright, PHP-FPM, Nginx
-- **API-CR**: Python 3.12, Playwright, HTTP server
+- **api-scraper**: Python 3.12, Scrapling (StealthyFetcher), HTTP server (replaces API-php + API-node)
+- **API-CR**: Python 3.12, Scrapling (StealthyFetcher), HTTP server
 - **Portal**: PHP 8.4, Tailwind CSS, Nginx
-- **scrape-sw-codes**: Python (aiohttp, asyncpg), PHP-CLI, PostgreSQL 16, PM2 (host service)
-- **scrape-sw-gsheet**: Python, Google Sheets API
+- **scrape-sw-codes**: Python (Scrapling AsyncFetcher, asyncpg), PHP-CLI, PostgreSQL 16, PM2 (host service)
+- **scrape-sw-gsheet**: Python, Scrapling (StealthyFetcher), Google Sheets API
 - **officernd-api**: Python 3.10+, FastAPI, Uvicorn, SQLAlchemy, asyncio
 - **officernd-bff**: NestJS 10, React 18, Vite, TypeScript, cache-manager
 
@@ -227,7 +214,7 @@ Docker containers connect via `host.docker.internal:5432`. Host services (office
 ## Container Names
 
 All containers follow naming pattern for VPS path `/root/scrapers/`:
-- `API-PHP`, `API-NODE`, `API-CR`, `PORTAL`
+- `API-SCRAPER`, `API-CR`, `PORTAL`
 - `SW_GSHEET`
 - `sw-codes-web` (PHP host service via PM2, php-cli on port 8084)
 - `officernd-api` (Python host service via PM2, uvicorn on port 8087)
@@ -235,12 +222,11 @@ All containers follow naming pattern for VPS path `/root/scrapers/`:
 
 ## Key Files
 
-- **API-node/src/scrapers/FastQatarScraper.ts**: Main TypeScript scraper implementation
-- **API-node/server.js**: HTTP server wrapper
-- **API-php/scraper.py**: Main Python async scraper
+- **api-scraper/scraper.py**: Main Python Scrapling scraper (replaces API-php/scraper.py + API-node/FastQatarScraper.ts)
+- **api-scraper/server.py**: Python HTTP server (replaces API-php/scraper.php + API-node/server.js)
 - **API-CR/auto_search_company.py**: Company search and certificate download (`run_company_search` for single CR, `search_companies_by_query` for name/CR multi-result search)
 - **API-CR/api_server.py**: HTTP API wrapper for certificate downloads and company search
-- **Portal/index.php**: Web portal with engine selection and CR search/download modal (supports search by CR number, English name, or Arabic name with multi-result selection)
+- **Portal/index.php**: Web portal with CR search/download modal (supports search by CR number, English name, or Arabic name with multi-result selection)
 - **scrape-sw-codes/discover_codes.py**: Business codes fetcher (2800+ codes, three-strategy: last-page-first / full no-skip / full with smart-skip)
 - **scrape-sw-codes/trigger-fetch-codes.php**: Trigger endpoint — resets progress file, restarts container, checks for crash and returns logs
 - **scrape-sw-codes/progress.php**: Real-time progress endpoint — reads `/tmp/fetch_progress.json`

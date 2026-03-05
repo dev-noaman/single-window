@@ -8,7 +8,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Deploy via SSH
@@ -17,7 +17,7 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           password: ${{ secrets.VPS_PASS }}
-          command_timeout: 25m
+          command_timeout: 40m
           script: |
             set -e
             REPO_DIR="/root/scrapers"
@@ -119,7 +119,10 @@ jobs:
             echo "[OK] Portal files ready"
 
             # --- Docker services ---
-            DOCKER_SERVICES=("API-php" "API-node" "API-CR" "Portal" "scrape-sw-gsheet")
+            # Remove legacy containers from pre-refactor era (api-scraper replaces both)
+            docker rm -f API-PHP API-NODE 2>/dev/null || true
+
+            DOCKER_SERVICES=("api-scraper" "API-CR" "Portal" "scrape-sw-gsheet")
 
             for svc in "${DOCKER_SERVICES[@]}"; do
               if [ -f "$REPO_DIR/$svc/docker-compose.yml" ]; then
@@ -165,14 +168,16 @@ jobs:
             docker rm -f SW_CODES_PYTHON SW_CODES_WEB SW_CODES_CRON 2>/dev/null || true
 
             # Install PHP CLI + PostgreSQL extension (for check-update.php, progress.php)
+            export DEBIAN_FRONTEND=noninteractive
             apt-get update -qq
             apt-get install -y -qq php-cli php-pgsql 2>/dev/null \
               || apt-get install -y -qq php php-pgsql 2>/dev/null \
               || echo "[WARN] PHP install issue — check-update.php may fail"
             php -m 2>/dev/null | grep -qi pgsql && echo "[OK] php-pgsql loaded" || echo "[WARN] php-pgsql not loaded"
 
-            # Install Python dependencies
-            pip3 install --break-system-packages -q aiohttp asyncpg 2>&1 | tail -3
+            # Install Python dependencies (Scrapling for discover_codes.py, asyncpg for DB)
+            pip3 install --break-system-packages -q scrapling asyncpg 2>&1 | tail -3
+            scrapling install 2>&1 | tail -5 || true
 
             # PM2: serve PHP files on port 8084
             pm2 delete sw-codes-web 2>/dev/null || true

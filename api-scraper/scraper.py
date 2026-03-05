@@ -1,28 +1,16 @@
-# pyright: reportMissingImports=false
 import asyncio
-import argparse
+import json
 import os
 import re
 import time
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict, Any
 
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 from scrapling.fetchers import StealthyFetcher
 from playwright.async_api import Page, TimeoutError as PlaywrightTimeoutError
-
-# Import progress writer for real-time monitoring
-from progress_writer import write_progress
 
 # ----------------------------
 # Configuration
 # ----------------------------
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DRIVE_DIR = os.path.join(SCRIPT_DIR, "drive")
-OUTPUT_DIR = os.path.join(SCRIPT_DIR, "output")
-GOOGLE_CREDENTIALS_FILE = os.path.join(DRIVE_DIR, "google-credentials.json")
-SPREADSHEET_NAME = "Filter"
-WORKSHEET_NAME = "AR"
 BASE_URL = (
     "https://investor.sw.gov.qa/wps/portal/investors/home/"
     "!ut/p/z1/04_Sj9CPykssy0xPLMnMz0vMAfIjo8zivfxNXA393Q38LXy9DQzMAj0cg4NcLY0MDMz1"
@@ -33,6 +21,7 @@ BASE_URL = (
 # Details page XPaths
 X_ACTIVITY_CODE = "/html/body/div[4]/div/div/section/div[2]/main/section[3]/div/div/div/div/div[1]/div[2]"
 X_ACTIVITY_NAME = "/html/body/div[4]/div/div/section/div[2]/main/section[3]/div/div/div/div/div[3]/div[2]"
+X_STATUS = "/html/body/div[4]/div/div/section/div[2]/main/section[3]/div/div/div/div/div[2]/div[2]/div"
 X_TBODY = "/html/body/div[4]/div/div/section/div[2]/main/section[3]/div/div/div/div/div[8]/div[2]/table/tbody"
 X_NO_APPROVAL = "/html/body/div[4]/div/div/section/div[2]/main/section[3]/div/div/div/div/div[10]/div[2]"
 
@@ -43,7 +32,7 @@ CSS_SEARCH_INPUT = "input#searchInput"
 X_FIRST_ACTIVITY = "//*[@id='businessList']/li/a/div"
 X_LANG_TOGGLE = "//*[@id='swChangeLangLink']/div"
 
-# Footer Business Activities Search
+# Footer business activities search
 X_FOOTER_BUSINESS_ACTIVITIES = "/html/body/footer/section[1]/div/div/div[2]/ul/li[2]/a"
 X_FOOTER_SEARCH_INPUT = (
     "/html/body/div[4]/div/div/section/div[2]/main/section[3]"
@@ -53,22 +42,6 @@ X_FOOTER_SEARCH_CONTAINER = (
     "/html/body/div[4]/div/div/section/div[2]/main/section[3]/div/div/div[1]/div"
 )
 CSS_RESULTS_FIRST_ACTIVITY_LINK = "#pills-activities a.ba-link"
-
-
-def format_column_b_as_text(worksheet):
-    try:
-        worksheet.format("B:B", {"numberFormat": {"type": "TEXT"}})
-        return True
-    except Exception as e:
-        print(f"Warning: Could not format column B as TEXT: {e}")
-        return False
-
-
-def connect_to_sheets():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    credentials = ServiceAccountCredentials.from_json_keyfile_name(GOOGLE_CREDENTIALS_FILE, scope)
-    client = gspread.authorize(credentials)
-    return client.open(SPREADSHEET_NAME).worksheet(WORKSHEET_NAME)
 
 
 # ------------------------------------------------------------------ helpers --
@@ -115,6 +88,13 @@ async def get_text_xpath(page: Page, xpath: str, timeout_ms: int = 10_000) -> st
     return ((await el.text_content()) or "").strip()
 
 
+async def get_status(page: Page) -> str:
+    try:
+        return await get_text_xpath(page, X_STATUS, timeout_ms=10_000)
+    except Exception:
+        return "Unknown"
+
+
 async def get_table_data(page: Page) -> List[Tuple[str, str, str]]:
     try:
         tbody = page.locator(f"xpath={X_TBODY}")
@@ -145,7 +125,7 @@ async def get_eligible_status(page: Page) -> str:
         )
         ul_locator = page.locator(f"xpath={ul_xpath}")
         try:
-            await ul_locator.wait_for(state="visible", timeout=3000)
+            await ul_locator.wait_for(state="visible", timeout=3_000)
         except Exception:
             return "No Business Requirements"
         items = await ul_locator.locator("li").all_inner_texts()
@@ -216,6 +196,7 @@ async def get_approvals_data(page: Page) -> str:
 
 
 async def _footer_business_search(page: Page, code: str) -> Page:
+    """Footer Business Activities Search fallback for ambiguous codes."""
     await page.goto(BASE_URL, wait_until="domcontentloaded")
     try:
         await page.wait_for_load_state("networkidle", timeout=30_000)
@@ -270,7 +251,7 @@ async def _footer_business_search(page: Page, code: str) -> Page:
             link = cur
             break
     if link is None:
-        raise Exception(f"No exact match found for code {code}. Found {count} results but none matched exactly.")
+        raise Exception(f"No exact match for code {code} in {count} results")
     popup_page: Page | None = None
     try:
         async with page.expect_popup(timeout=20_000) as popup_info:
@@ -287,224 +268,156 @@ async def _footer_business_search(page: Page, code: str) -> Page:
     return details_page
 
 
-def save_activity_code_to_sheet(worksheet, row_number: int, activity_code: str) -> bool:
-    try:
-        worksheet.update_cell(row_number, 2, str(activity_code))
-        return True
-    except Exception:
-        return False
+# --------------------------------------------------------- main scrape entry --
 
-
-def save_to_sheet(worksheet, row_number: int, col: int, value: str) -> bool:
-    try:
-        worksheet.update_cell(row_number, col, value)
-        return True
-    except Exception:
-        return False
-
-
-async def process_activity_code(page: Page, code: str, row_number: int, worksheet) -> tuple:
+async def scrape_activity_code(code: str) -> Dict[str, Any]:
     """
-    Process a single activity code. Returns: (success, used_additional_step, error_msg)
+    Scrape activity details for a given business activity code.
+    Returns {"status": "success"|"error", "data": {...}|None, "error": str|None}.
     """
-    popup_details_page: Page | None = None
-    used_additional = False
-    error_msg = None
+    extracted: Dict[str, Any] = {}
 
-    try:
-        print(f"Processing row {row_number} with code {code} ...")
+    details_url = (
+        f"https://investor.sw.gov.qa/wps/portal/investors/information-center"
+        f"/ba/details?bacode={code}"
+    )
 
+    async def page_action(page: Page) -> None:
+        popup_details_page: Page | None = None
         try:
-            await page.locator(f"xpath={X_ACTIVITY_CODE}").wait_for(state="visible", timeout=30_000)
-            print("  ✓ Direct URL success")
-        except Exception as e:
-            print(f"\n  Direct URL failed: {e}")
-            print(f"  Falling back to search methods...")
+            # Strategy 1: direct URL (StealthyFetcher already navigated here)
             try:
-                search_icon = page.locator(f"xpath={X_SEARCH_ICON}")
-                await search_icon.wait_for(state="visible", timeout=10_000)
-                await search_icon.click()
-                business_tab = page.locator(f"xpath={X_BUSINESS_TAB}")
-                await business_tab.wait_for(state="visible", timeout=10_000)
-                await business_tab.click()
-                inp = page.locator(CSS_SEARCH_INPUT)
-                await inp.wait_for(state="visible", timeout=10_000)
-                await inp.fill(code)
+                await page.locator(f"xpath={X_ACTIVITY_CODE}").wait_for(
+                    state="visible", timeout=30_000
+                )
+                active_page = page
+            except PlaywrightTimeoutError:
+                # Strategy 2: search flow fallback
+                active_page = await _run_search_fallback(page, code)
+                if active_page is not page:
+                    popup_details_page = active_page
+
+            # Extract English data
+            await set_language(active_page, "en")
+            extracted["activity_code"] = await get_text_xpath(active_page, X_ACTIVITY_CODE)
+            if not extracted["activity_code"]:
+                extracted["_error"] = "Activity code element empty"
+                return
+            extracted["status"] = await get_status(active_page)
+
+            await set_language(active_page, "en")
+            extracted["name_en"] = await get_text_xpath(active_page, X_ACTIVITY_NAME)
+
+            # Extract Arabic name
+            if await set_language(active_page, "ar"):
+                extracted["name_ar"] = await get_text_xpath(active_page, X_ACTIVITY_NAME)
+            else:
+                extracted["name_ar"] = "Error switching to Arabic"
+
+            # Back to English for remaining fields
+            await set_language(active_page, "en")
+
+            rows = await get_table_data(active_page)
+            if rows:
+                parts = [
+                    f"Main Location {i}: {m}\nSub Location {i}: {s}\nFee {i}: {f}"
+                    for i, (m, s, f) in enumerate(rows, start=1)
+                ]
+                extracted["locations"] = "\n\n".join(parts)
+            else:
+                extracted["locations"] = ""
+
+            extracted["eligible"] = await get_eligible_status(active_page)
+            extracted["approvals"] = await get_approvals_data(active_page)
+
+        except Exception as exc:
+            extracted["_error"] = str(exc)
+        finally:
+            if popup_details_page is not None:
                 try:
-                    await page.wait_for_load_state("networkidle", timeout=10_000)
+                    await popup_details_page.close()
                 except Exception:
                     pass
-                await asyncio.sleep(1)
-                use_additional_step = False
-                try:
-                    business_list = page.locator("//*[@id='businessList']/li")
-                    result_count = await business_list.count()
-                    if result_count > 1:
-                        use_additional_step = True
-                except Exception:
-                    pass
-                if use_additional_step:
-                    used_additional = True
-                    details_page = await _footer_business_search(page, code)
-                    if details_page is not page:
-                        popup_details_page = details_page
-                        page = details_page
-                else:
-                    try:
-                        first = page.locator(f"xpath={X_FIRST_ACTIVITY}")
-                        await first.wait_for(state="visible", timeout=10_000)
-                        await first.click()
-                        await page.wait_for_load_state("networkidle", timeout=20_000)
-                        await page.locator(f"xpath={X_ACTIVITY_CODE}").wait_for(state="visible", timeout=20_000)
-                    except PlaywrightTimeoutError:
-                        used_additional = True
-                        details_page = await _footer_business_search(page, code)
-                        if details_page is not page:
-                            popup_details_page = details_page
-                            page = details_page
-            except Exception as fallback_error:
-                error_msg = f"All methods failed: {fallback_error}"
-                return False, used_additional, error_msg
 
-        await set_language(page, "en")
+    await StealthyFetcher.async_fetch(
+        details_url,
+        headless=True,
+        disable_resources=True,
+        network_idle=True,
+        page_action=page_action,
+        timeout=120_000,
+    )
 
-        activity_code = await get_text_xpath(page, X_ACTIVITY_CODE, timeout_ms=10_000)
-        if not activity_code:
-            return False, used_additional, "Activity code not found on details page"
-        save_activity_code_to_sheet(worksheet, row_number, activity_code)
-
-        await set_language(page, "en")
-        en_name = await get_text_xpath(page, X_ACTIVITY_NAME, timeout_ms=10_000)
-        save_to_sheet(worksheet, row_number, 4, en_name)
-
-        if await set_language(page, "ar"):
-            ar_name = await get_text_xpath(page, X_ACTIVITY_NAME, timeout_ms=10_000)
-            save_to_sheet(worksheet, row_number, 3, ar_name)
-
-        await set_language(page, "en")
-
-        rows = await get_table_data(page)
-        if rows:
-            formatted = [
-                f"Main Location {i}: {m}\nSub Location {i}: {s}\nFee {i}: {f}"
-                for i, (m, s, f) in enumerate(rows, start=1)
-            ]
-            save_to_sheet(worksheet, row_number, 5, "\n\n".join(formatted))
-
-        eligible = await get_eligible_status(page)
-        save_to_sheet(worksheet, row_number, 6, eligible)
-
-        approvals = await get_approvals_data(page)
-        save_to_sheet(worksheet, row_number, 7, approvals)
-
-        return True, used_additional, None
-
-    except Exception as e:
-        error_msg = str(e)
-        print(f"Error processing activity code {code}: {e}")
-        return False, used_additional, error_msg
-    finally:
-        if popup_details_page is not None:
-            try:
-                await popup_details_page.close()
-            except Exception:
-                pass
+    if extracted.get("activity_code"):
+        return {
+            "status": "success",
+            "data": {
+                "activity_code": extracted.get("activity_code", ""),
+                "status": extracted.get("status", ""),
+                "name_en": extracted.get("name_en", ""),
+                "name_ar": extracted.get("name_ar", ""),
+                "locations": extracted.get("locations", ""),
+                "eligible": extracted.get("eligible", ""),
+                "approvals": extracted.get("approvals", ""),
+            },
+            "error": None,
+        }
+    return {
+        "status": "error",
+        "data": None,
+        "error": extracted.get("_error", "No data extracted"),
+    }
 
 
-async def run(headless: bool) -> None:
-    import time as time_module
-
-    start_time = time_module.time()
-
-    worksheet = connect_to_sheets()
-
-    worksheet.update_cell(1, 2, "Activity_Code")
-    worksheet.update_cell(1, 3, "AR-Activity")
-    worksheet.update_cell(1, 4, "EN-Activity")
-    worksheet.update_cell(1, 5, "Location")
-    worksheet.update_cell(1, 6, "Eligible")
-    worksheet.update_cell(1, 7, "Approvals")
-    format_column_b_as_text(worksheet)
-
-    codes = worksheet.col_values(1)[1:]
-    if not codes:
-        print("No activity codes found in sheet")
-        write_progress('ar', 'error', 0, 0, 'No activity codes found in sheet')
-        return
-
-    total_rows = len(codes)
-    start_time = time.time()
-    write_progress('ar', 'running', 0, total_rows, 'Starting AR scraper...', start_time=start_time)
-
-    total_success = 0
-    total_failed = 0
-    failed_codes = []
-
-    for idx, code in enumerate(codes, start=2):
-        current_row_num = idx - 1
-        write_progress('ar', 'running', current_row_num, total_rows,
-                       f'Processing row {current_row_num}/{total_rows}', total_success, start_time=start_time)
-
-        ok = False
-        error_msg = None
-
-        details_url = (
-            f"https://investor.sw.gov.qa/wps/portal/investors/information-center"
-            f"/ba/details?bacode={code}"
-        )
-
-        result_holder = {}
-
-        async def page_action(page: Page, _code=code, _idx=idx, _worksheet=worksheet, _holder=result_holder):
-            ok2, used_add, err = await process_activity_code(page, _code, _idx, _worksheet)
-            _holder['ok'] = ok2
-            _holder['error'] = err
-
+async def _run_search_fallback(page: Page, code: str) -> Page:
+    """Search fallback: try header search first, then footer business search."""
+    try:
+        search_icon = page.locator(f"xpath={X_SEARCH_ICON}")
+        await search_icon.wait_for(state="visible", timeout=10_000)
+        await search_icon.click()
+        business_tab = page.locator(f"xpath={X_BUSINESS_TAB}")
+        await business_tab.wait_for(state="visible", timeout=10_000)
+        await business_tab.click()
+        inp = page.locator(CSS_SEARCH_INPUT)
+        await inp.wait_for(state="visible", timeout=10_000)
+        await inp.fill(code)
         try:
-            await StealthyFetcher.async_fetch(
-                details_url,
-                headless=headless,
-                disable_resources=True,
-                network_idle=True,
-                page_action=page_action,
-                timeout=120_000,
+            await page.wait_for_load_state("networkidle", timeout=10_000)
+        except Exception:
+            pass
+        await asyncio.sleep(1)
+        business_list = page.locator("//*[@id='businessList']/li")
+        count = await business_list.count()
+        if count > 1:
+            return await _footer_business_search(page, code)
+        # Single result - click it
+        try:
+            first = page.locator(f"xpath={X_FIRST_ACTIVITY}")
+            await first.wait_for(state="visible", timeout=10_000)
+            await first.click()
+            await page.wait_for_load_state("networkidle", timeout=20_000)
+            await page.locator(f"xpath={X_ACTIVITY_CODE}").wait_for(
+                state="visible", timeout=20_000
             )
-            ok = result_holder.get('ok', False)
-            error_msg = result_holder.get('error')
-        except Exception as e:
-            error_msg = str(e)
-            print(f"Error: {e}")
-
-        if not ok:
-            print(f"Failed to process {code}")
-            total_failed += 1
-            failed_codes.append(code)
-        else:
-            total_success += 1
-
-    write_progress('ar', 'completed', total_rows, total_rows,
-                   'Scraping completed successfully', total_success, start_time=start_time)
-
-    elapsed_time = time_module.time() - start_time
-    minutes = int(elapsed_time // 60)
-    seconds = int(elapsed_time % 60)
-
-    print("\n" + "="*70)
-    print("SCRAPE SUMMARY (AR)")
-    print("="*70)
-    print(f"Elapsed Time:       {minutes}m {seconds}s")
-    print(f"Total Success Rows: {total_success}")
-    if total_failed > 0:
-        print(f"Total Failed Rows:  {total_failed}")
-    print("="*70)
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Scrape AR/EN details using Scrapling (default headless)")
-    parser.add_argument("--visible", action="store_true", help="Run browser visible (default is headless)")
-    args = parser.parse_args()
-    asyncio.run(run(headless=not args.visible))
+            return page
+        except PlaywrightTimeoutError:
+            return await _footer_business_search(page, code)
+    except Exception:
+        return await _footer_business_search(page, code)
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--code", required=True)
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args()
+    result = asyncio.run(scrape_activity_code(args.code))
+    if args.json:
+        print(json.dumps(result, ensure_ascii=True, indent=2))
+    else:
+        if result["status"] == "success":
+            for k, v in result["data"].items():
+                print(f"{k}: {v}")
+        else:
+            print(f"Error: {result['error']}")

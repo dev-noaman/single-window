@@ -8,7 +8,8 @@ from typing import Optional, List, Tuple
 
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError, Page
+from scrapling.fetchers import StealthyFetcher
+from playwright.async_api import Page, TimeoutError as PlaywrightTimeoutError
 
 # Import progress writer for real-time monitoring
 from progress_writer import write_progress
@@ -22,13 +23,17 @@ OUTPUT_DIR = os.path.join(SCRIPT_DIR, "output")
 GOOGLE_CREDENTIALS_FILE = os.path.join(DRIVE_DIR, "google-credentials.json")
 SPREADSHEET_NAME = "Filter"
 WORKSHEET_NAME = "EN"
-BASE_URL = "https://investor.sw.gov.qa/wps/portal/investors/home/!ut/p/z1/04_Sj9CPykssy0xPLMnMz0vMAfIjo8zivfxNXA393Q38LXy9DQzMAj0cg4NcLY0MDMz1w_Wj9KNQlISGGRkEOjuZBjm6Wxj7OxpCFRjgAI4G-sGJRfoF2dlpjo6KigD6q7KF/dz/d5/L0lHSkovd0RNQUZrQUVnQSEhLzROVkUvZW4!/"
+BASE_URL = (
+    "https://investor.sw.gov.qa/wps/portal/investors/home/"
+    "!ut/p/z1/04_Sj9CPykssy0xPLMnMz0vMAfIjo8zivfxNXA393Q38LXy9DQzMAj0cg4NcLY0MDMz1"
+    "w_Wj9KNQlISGGRkEOjuZBjm6Wxj7OxpCFRjgAI4G-sGJRfoF2dlpjo6KigD6q7KF/dz/d5/"
+    "L0lHSkovd0RNQUZrQUVnQSEhLzROVkUvZW4!/"
+)
 
 # Details page XPaths
 X_ACTIVITY_CODE = "/html/body/div[4]/div/div/section/div[2]/main/section[3]/div/div/div/div/div[1]/div[2]"
 X_ACTIVITY_NAME = "/html/body/div[4]/div/div/section/div[2]/main/section[3]/div/div/div/div/div[3]/div[2]"
 X_TBODY = "/html/body/div[4]/div/div/section/div[2]/main/section[3]/div/div/div/div/div[8]/div[2]/table/tbody"
-X_ELIGIBLE = "/html/body/div[4]/div/div/section/div[2]/main/section[3]/div/div/div/div/div[9]/div[2]/table/tbody/tr[2]/td"
 X_NO_APPROVAL = "/html/body/div[4]/div/div/section/div[2]/main/section[3]/div/div/div/div/div[10]/div[2]"
 
 # Search flow selectors
@@ -38,21 +43,21 @@ CSS_SEARCH_INPUT = "input#searchInput"
 X_FIRST_ACTIVITY = "//*[@id='businessList']/li/a/div"
 X_LANG_TOGGLE = "//*[@id='swChangeLangLink']/div"
 
-# Additional Step (Footer Business Activities Search) – user-provided XPaths
+# Footer Business Activities Search
 X_FOOTER_BUSINESS_ACTIVITIES = "/html/body/footer/section[1]/div/div/div[2]/ul/li[2]/a"
-X_FOOTER_SEARCH_INPUT = "/html/body/div[4]/div/div/section/div[2]/main/section[3]/div/div/div[1]/div/div/input"
-X_FOOTER_SEARCH_CONTAINER = "/html/body/div[4]/div/div/section/div[2]/main/section[3]/div/div/div[1]/div"
+X_FOOTER_SEARCH_INPUT = (
+    "/html/body/div[4]/div/div/section/div[2]/main/section[3]"
+    "/div/div/div[1]/div/div/input"
+)
+X_FOOTER_SEARCH_CONTAINER = (
+    "/html/body/div[4]/div/div/section/div[2]/main/section[3]/div/div/div[1]/div"
+)
 CSS_RESULTS_FIRST_ACTIVITY_LINK = "#pills-activities a.ba-link"
 
 
 def format_column_b_as_text(worksheet):
-    """Format Column B as TEXT to preserve leading zeros"""
     try:
-        worksheet.format("B:B", {
-            "numberFormat": {
-                "type": "TEXT"
-            }
-        })
+        worksheet.format("B:B", {"numberFormat": {"type": "TEXT"}})
         return True
     except Exception as e:
         print(f"Warning: Could not format column B as TEXT: {e}")
@@ -66,9 +71,7 @@ def connect_to_sheets():
     return client.open(SPREADSHEET_NAME).worksheet(WORKSHEET_NAME)
 
 
-async def _safe_screenshot(page: Page, filename: str) -> None:
-    pass
-
+# ------------------------------------------------------------------ helpers --
 
 async def _get_lang(page: Page) -> str:
     try:
@@ -78,24 +81,16 @@ async def _get_lang(page: Page) -> str:
 
 
 async def set_language(page: Page, target_lang: str, timeout_s: int = 10) -> bool:
-    """
-    Toggle website language between Arabic and English.
-    target_lang: 'ar' or 'en'
-    """
     try:
-        current_lang = await _get_lang(page)
-        if current_lang == target_lang:
+        if await _get_lang(page) == target_lang:
             return True
-
         btn = page.locator(f"xpath={X_LANG_TOGGLE}")
         await btn.wait_for(state="visible", timeout=10_000)
         try:
             await btn.scroll_into_view_if_needed()
         except Exception:
-            # Element may have become detached, try without scroll
             pass
         await btn.click()
-
         deadline = time.time() + timeout_s
         while time.time() < deadline:
             if await _get_lang(page) == target_lang:
@@ -110,152 +105,14 @@ async def set_language(page: Page, target_lang: str, timeout_s: int = 10) -> boo
         return False
 
 
-async def click_xpath(page: Page, xpath: str, timeout_ms: int = 10_000) -> None:
-    el = page.locator(f"xpath={xpath}")
-    await el.wait_for(state="visible", timeout=timeout_ms)
-    try:
-        await el.scroll_into_view_if_needed()
-    except Exception:
-        # Element may have become detached, try without scroll
-        pass
-    await el.click()
-
-
-async def fill_css(page: Page, selector: str, value: str, timeout_ms: int = 10_000) -> None:
-    el = page.locator(selector)
-    await el.wait_for(state="visible", timeout=timeout_ms)
-    await el.fill(value)
-
-
-async def direct_to_details(page: Page, code: str) -> Page:
-    """
-    FASTEST APPROACH: Go directly to the details page using the bacode URL parameter.
-    Skips footer navigation, search, results scanning entirely.
-    Returns the details Page.
-    """
-    # Construct direct URL to details page
-    details_url = f"https://investor.sw.gov.qa/wps/portal/investors/information-center/ba/details?bacode={code}"
-    
-    await page.goto(details_url, wait_until="domcontentloaded")
-    
-    try:
-        await page.wait_for_load_state("networkidle", timeout=30_000)
-    except Exception:
-        pass
-    
-    # Wait for the activity code element to be visible
-    await page.locator(f"xpath={X_ACTIVITY_CODE}").wait_for(state="visible", timeout=30_000)
-    
-    return page
-
-
-async def additional_step_footer_business_search(page: Page, code: str) -> Page:
-    """
-    Additional Step: use the footer Business Activities Search page to find and open the activity details.
-    Returns the details Page (may be a popup/new tab).
-    """
-    await page.goto(BASE_URL, wait_until="domcontentloaded")
-    try:
-        await page.wait_for_load_state("networkidle", timeout=30_000)
-    except Exception:
-        pass
-
-    # Scroll to footer and click Business activities
-    try:
-        await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-    except Exception:
-        pass
-    footer = page.locator(f"xpath={X_FOOTER_BUSINESS_ACTIVITIES}")
-    await footer.wait_for(state="visible", timeout=20_000)
-    await footer.click()
-
-    try:
-        await page.wait_for_load_state("networkidle", timeout=30_000)
-    except Exception:
-        pass
-
-    # Type code and trigger search
-    inp = page.locator(f"xpath={X_FOOTER_SEARCH_INPUT}")
-    await inp.wait_for(state="visible", timeout=20_000)
-    await inp.fill(code)
-    try:
-        await inp.press("Enter")
-    except Exception:
-        pass
-
-    # Prefer real SEARCH button if present; fall back to container click
-    try:
-        btn = page.locator("xpath=//button[contains(translate(normalize-space(.), 'search', 'SEARCH'), 'SEARCH')]")
-        if await btn.count() > 0:
-            await btn.first.click()
-        else:
-            await page.locator(f"xpath={X_FOOTER_SEARCH_CONTAINER}").click()
-    except Exception:
-        try:
-            await page.locator(f"xpath={X_FOOTER_SEARCH_CONTAINER}").click()
-        except Exception:
-            pass
-
-    try:
-        await page.wait_for_load_state("networkidle", timeout=20_000)
-    except Exception:
-        pass
-
-    # Results render under pills-activities
-    results_root = page.locator("css=#pills-activities")
-    await results_root.wait_for(state="attached", timeout=20_000)
-
-    # Find the exact-match link by bacode in href (fastest and most reliable)
-    all_links = page.locator(f"css={CSS_RESULTS_FIRST_ACTIVITY_LINK}")
-    await all_links.first.wait_for(state="visible", timeout=20_000)
-    
-    link = None
-    count = await all_links.count()
-    
-    for i in range(count):
-        cur = all_links.nth(i)
-        href = await cur.get_attribute("href")
-        # Extract bacode from href
-        bacode_match = re.search(r"(?:\?|&)bacode=(\d+)", href or "")
-        bacode = bacode_match.group(1) if bacode_match else None
-        
-        # Check for exact bacode match
-        if bacode == code:
-            link = cur
-            break
-    
-    # Only proceed if exact match found
-    if link is None:
-        raise Exception(f"No exact match found for code {code}. Found {count} results but none matched exactly.")
-
-    # Details often open in a new tab (target=_blank)
-    popup_page: Page | None = None
-    try:
-        async with page.expect_popup(timeout=20_000) as popup_info:
-            await link.click()
-        popup_page = await popup_info.value
-    except Exception:
-        await link.click()
-
-    details_page = popup_page or page
-    try:
-        await details_page.wait_for_load_state("networkidle", timeout=30_000)
-    except Exception:
-        pass
-    await details_page.locator(f"xpath={X_ACTIVITY_CODE}").wait_for(state="visible", timeout=30_000)
-    return details_page
-
-
 async def get_text_xpath(page: Page, xpath: str, timeout_ms: int = 10_000) -> str:
     el = page.locator(f"xpath={xpath}")
     await el.wait_for(state="visible", timeout=timeout_ms)
     try:
         await el.scroll_into_view_if_needed()
     except Exception:
-        # Element may have become detached, try without scroll
         pass
-    txt = await el.text_content()
-    return (txt or "").strip()
+    return ((await el.text_content()) or "").strip()
 
 
 async def get_table_data(page: Page) -> List[Tuple[str, str, str]]:
@@ -265,9 +122,7 @@ async def get_table_data(page: Page) -> List[Tuple[str, str, str]]:
         try:
             await tbody.scroll_into_view_if_needed()
         except Exception:
-            # Element may have become detached, try without scroll
             pass
-
         rows = tbody.locator("tr")
         n = await rows.count()
         out: List[Tuple[str, str, str]] = []
@@ -283,50 +138,29 @@ async def get_table_data(page: Page) -> List[Tuple[str, str, str]]:
 
 
 async def get_eligible_status(page: Page) -> str:
-    """
-    Extract eligible status from the specific UL list.
-    XPath provided: .../table/tbody/tr[2]/td/ul
-    Returns "No Business Requirements" if not found.
-    """
     try:
-        # User-specific XPath for the UL containing eligibility items
-        ul_xpath = "/html/body/div[4]/div/div/section/div[2]/main/section[3]/div/div/div/div/div[9]/div[2]/table/tbody/tr[2]/td/ul"
-        
+        ul_xpath = (
+            "/html/body/div[4]/div/div/section/div[2]/main/section[3]"
+            "/div/div/div/div/div[9]/div[2]/table/tbody/tr[2]/td/ul"
+        )
         ul_locator = page.locator(f"xpath={ul_xpath}")
-        
         try:
-            # Wait briefly to see if it exists
             await ul_locator.wait_for(state="visible", timeout=3000)
         except Exception:
-            # If explicit UL not found, return default
             return "No Business Requirements"
-
-        # Extract all list items
         items = await ul_locator.locator("li").all_inner_texts()
-        
-        # Clean and filter empty items
-        cleaned_items = [item.strip() for item in items if item.strip()]
-        
-        if cleaned_items:
-            return "\n".join(cleaned_items)
-            
-        return "No Business Requirements"
-
+        cleaned = [i.strip() for i in items if i.strip()]
+        return "\n".join(cleaned) if cleaned else "No Business Requirements"
     except Exception:
         return "No Business Requirements"
 
 
 async def get_approvals_data(page: Page) -> str:
-    """
-    Extract approvals data using the same accordion IDs as Selenium version.
-    Returns formatted English string or default message.
-    """
     try:
         try:
             await page.evaluate("window.scrollTo(0, document.body.scrollHeight/2)")
         except Exception:
             pass
-
         heading = page.locator("xpath=//h4[contains(text(), 'الموافقات المطلوبة')]")
         if await heading.count() == 0:
             try:
@@ -337,7 +171,6 @@ async def get_approvals_data(page: Page) -> str:
                         return "No Approvals Needed"
             except Exception:
                 pass
-
         approval_data = []
         for i in range(12):
             btn = page.locator(f"xpath=//*[@id='heading{i}']/button")
@@ -347,7 +180,6 @@ async def get_approvals_data(page: Page) -> str:
                 try:
                     await btn.scroll_into_view_if_needed()
                 except Exception:
-                    # Element may have become detached, try without scroll
                     pass
                 title_text = ((await btn.text_content()) or "").strip()
                 if title_text and title_text[0].isdigit() and "." in title_text[:5]:
@@ -355,7 +187,6 @@ async def get_approvals_data(page: Page) -> str:
                 approval_title = title_text or f"Approval {i+1}"
             except Exception:
                 approval_title = f"Approval {i+1}"
-
             try:
                 await btn.click()
             except Exception:
@@ -363,7 +194,6 @@ async def get_approvals_data(page: Page) -> str:
                     await page.evaluate("(el) => el.click()", await btn.element_handle())
                 except Exception:
                     pass
-
             agency = "Not specified"
             try:
                 agency_el = page.locator(f"xpath=//*[@id='collapse{i}']/div/div/div[1]/div[2]")
@@ -371,29 +201,94 @@ async def get_approvals_data(page: Page) -> str:
                     try:
                         await agency_el.scroll_into_view_if_needed()
                     except Exception:
-                        # Element may have become detached, try without scroll
                         pass
                     agency_txt = ((await agency_el.text_content()) or "").strip()
                     agency = agency_txt or agency
             except Exception:
                 pass
-
             approval_data.append((i + 1, approval_title, agency))
-
         if not approval_data:
             return "No Approvals Needed"
-
-        parts = []
-        for num, title, agency in approval_data:
-            parts.append(f"Approval {num}: {title}\nAgency {num}: {agency}")
+        parts = [f"Approval {num}: {title}\nAgency {num}: {agency}" for num, title, agency in approval_data]
         return "\n\n".join(parts)
     except Exception:
         return "Error extracting approvals"
 
 
+async def _footer_business_search(page: Page, code: str) -> Page:
+    await page.goto(BASE_URL, wait_until="domcontentloaded")
+    try:
+        await page.wait_for_load_state("networkidle", timeout=30_000)
+    except Exception:
+        pass
+    try:
+        await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+    except Exception:
+        pass
+    footer = page.locator(f"xpath={X_FOOTER_BUSINESS_ACTIVITIES}")
+    await footer.wait_for(state="visible", timeout=20_000)
+    await footer.click()
+    try:
+        await page.wait_for_load_state("networkidle", timeout=30_000)
+    except Exception:
+        pass
+    inp = page.locator(f"xpath={X_FOOTER_SEARCH_INPUT}")
+    await inp.wait_for(state="visible", timeout=20_000)
+    await inp.fill(code)
+    try:
+        await inp.press("Enter")
+    except Exception:
+        pass
+    try:
+        btn = page.locator(
+            "xpath=//button[contains(translate(normalize-space(.), 'search', 'SEARCH'), 'SEARCH')]"
+        )
+        if await btn.count() > 0:
+            await btn.first.click()
+        else:
+            await page.locator(f"xpath={X_FOOTER_SEARCH_CONTAINER}").click()
+    except Exception:
+        try:
+            await page.locator(f"xpath={X_FOOTER_SEARCH_CONTAINER}").click()
+        except Exception:
+            pass
+    try:
+        await page.wait_for_load_state("networkidle", timeout=20_000)
+    except Exception:
+        pass
+    results_root = page.locator("css=#pills-activities")
+    await results_root.wait_for(state="attached", timeout=20_000)
+    all_links = page.locator(f"css={CSS_RESULTS_FIRST_ACTIVITY_LINK}")
+    await all_links.first.wait_for(state="visible", timeout=20_000)
+    count = await all_links.count()
+    link = None
+    for i in range(count):
+        cur = all_links.nth(i)
+        href = await cur.get_attribute("href")
+        m = re.search(r"(?:\?|&)bacode=(\d+)", href or "")
+        if m and m.group(1) == code:
+            link = cur
+            break
+    if link is None:
+        raise Exception(f"No exact match found for code {code}. Found {count} results but none matched exactly.")
+    popup_page: Page | None = None
+    try:
+        async with page.expect_popup(timeout=20_000) as popup_info:
+            await link.click()
+        popup_page = await popup_info.value
+    except Exception:
+        await link.click()
+    details_page = popup_page or page
+    try:
+        await details_page.wait_for_load_state("networkidle", timeout=30_000)
+    except Exception:
+        pass
+    await details_page.locator(f"xpath={X_ACTIVITY_CODE}").wait_for(state="visible", timeout=30_000)
+    return details_page
+
+
 def save_activity_code_to_sheet(worksheet, row_number: int, activity_code: str) -> bool:
     try:
-        # Write code as string (Column B is already formatted as TEXT to preserve leading zeros)
         worksheet.update_cell(row_number, 2, str(activity_code))
         return True
     except Exception:
@@ -408,67 +303,65 @@ def save_to_sheet(worksheet, row_number: int, col: int, value: str) -> bool:
         return False
 
 
-async def process_activity_code(page: Page, code: str, row_number: int, worksheet) -> tuple[bool, bool, str | None]:
+async def process_activity_code(page: Page, code: str, row_number: int, worksheet) -> tuple:
     """
-    Process a single activity code.
-    Returns: (success: bool, used_additional_step: bool, error_msg: str | None)
+    Process a single activity code using direct URL (Scrapling already navigated there).
+    Returns: (success, used_additional_step, error_msg)
     """
     popup_details_page: Page | None = None
     used_additional = False
     error_msg = None
-    
+
     try:
         print(f"Processing row {row_number} with code {code} ...")
 
-        # FASTEST APPROACH: Try direct URL first
+        # Strategy 1: direct URL (page already at details URL via StealthyFetcher)
         try:
-            # Direct URL attempt (silent)
-            page = await direct_to_details(page, code)
-            print("  ✓ Success")
+            await page.locator(f"xpath={X_ACTIVITY_CODE}").wait_for(state="visible", timeout=30_000)
+            print("  ✓ Direct URL success")
         except Exception as e:
             print(f"\n  Direct URL failed: {e}")
             print(f"  Falling back to search methods...")
-            
-            # Fallback to original search flow
             try:
-                await click_xpath(page, X_SEARCH_ICON)
-                await click_xpath(page, X_BUSINESS_TAB)
-                await fill_css(page, CSS_SEARCH_INPUT, code)
-
+                search_icon = page.locator(f"xpath={X_SEARCH_ICON}")
+                await search_icon.wait_for(state="visible", timeout=10_000)
+                await search_icon.click()
+                business_tab = page.locator(f"xpath={X_BUSINESS_TAB}")
+                await business_tab.wait_for(state="visible", timeout=10_000)
+                await business_tab.click()
+                inp = page.locator(CSS_SEARCH_INPUT)
+                await inp.wait_for(state="visible", timeout=10_000)
+                await inp.fill(code)
                 try:
                     await page.wait_for_load_state("networkidle", timeout=10_000)
                 except Exception:
                     pass
-
-                # Check if multiple results exist (ambiguous search)
+                await asyncio.sleep(1)
                 use_additional_step = False
                 try:
-                    await asyncio.sleep(1)
                     business_list = page.locator("//*[@id='businessList']/li")
                     result_count = await business_list.count()
                     if result_count > 1:
-                        print(f"Multiple results detected ({result_count}), using Additional Step for exact match")
+                        print(f"Multiple results detected ({result_count}), using footer search")
                         use_additional_step = True
                 except Exception:
                     pass
-
                 if use_additional_step:
-                    print("Additional Step: Footer Business Activities Search (exact match)")
                     used_additional = True
-                    details_page = await additional_step_footer_business_search(page, code)
+                    details_page = await _footer_business_search(page, code)
                     if details_page is not page:
                         popup_details_page = details_page
                         page = details_page
                 else:
-                    # Primary flow: click first result
                     try:
-                        await click_xpath(page, X_FIRST_ACTIVITY)
+                        first = page.locator(f"xpath={X_FIRST_ACTIVITY}")
+                        await first.wait_for(state="visible", timeout=10_000)
+                        await first.click()
                         await page.wait_for_load_state("networkidle", timeout=20_000)
                         await page.locator(f"xpath={X_ACTIVITY_CODE}").wait_for(state="visible", timeout=20_000)
                     except PlaywrightTimeoutError:
-                        print("Additional Step: Footer Business Activities Search")
                         used_additional = True
-                        details_page = await additional_step_footer_business_search(page, code)
+                        details_page = await _footer_business_search(page, code)
                         if details_page is not page:
                             popup_details_page = details_page
                             page = details_page
@@ -476,49 +369,42 @@ async def process_activity_code(page: Page, code: str, row_number: int, workshee
                 error_msg = f"All methods failed: {fallback_error}"
                 return False, used_additional, error_msg
 
-        # Ensure English mode first
         await set_language(page, "en")
 
         activity_code = await get_text_xpath(page, X_ACTIVITY_CODE, timeout_ms=10_000)
         if not activity_code:
-            error_msg = "Activity code not found on details page"
-            return False, used_additional, error_msg
+            return False, used_additional, "Activity code not found on details page"
         save_activity_code_to_sheet(worksheet, row_number, activity_code)
 
-        # English activity name (Column D)
         await set_language(page, "en")
         en_name = await get_text_xpath(page, X_ACTIVITY_NAME, timeout_ms=10_000)
         save_to_sheet(worksheet, row_number, 4, en_name)
 
-        # Arabic activity name (Column C)
         if await set_language(page, "ar"):
             ar_name = await get_text_xpath(page, X_ACTIVITY_NAME, timeout_ms=10_000)
             save_to_sheet(worksheet, row_number, 3, ar_name)
 
-        # Back to English for the rest
         await set_language(page, "en")
 
-        # Location data (Column E) – English labels like Selenium EN script
         rows = await get_table_data(page)
         if rows:
-            formatted = []
-            for i, (main_location, sub_location, fee) in enumerate(rows, start=1):
-                formatted.append(f"Main Location {i}: {main_location}\nSub Location {i}: {sub_location}\nFee {i}: {fee}")
+            formatted = [
+                f"Main Location {i}: {m}\nSub Location {i}: {s}\nFee {i}: {f}"
+                for i, (m, s, f) in enumerate(rows, start=1)
+            ]
             save_to_sheet(worksheet, row_number, 5, "\n\n".join(formatted))
 
-        # Eligible status (Column F)
         eligible = await get_eligible_status(page)
         save_to_sheet(worksheet, row_number, 6, eligible)
 
-        # Approvals (Column G)
         approvals = await get_approvals_data(page)
         save_to_sheet(worksheet, row_number, 7, approvals)
 
         return True, used_additional, None
+
     except Exception as e:
         error_msg = str(e)
         print(f"Error processing activity code {code}: {e}")
-        await _safe_screenshot(page, os.path.join(SCRIPT_DIR, f"error_row_{row_number}.png"))
         return False, used_additional, error_msg
     finally:
         if popup_details_page is not None:
@@ -530,20 +416,17 @@ async def process_activity_code(page: Page, code: str, row_number: int, workshee
 
 async def run(headless: bool) -> None:
     import time as time_module
-    
+
     start_time = time_module.time()
-    
+
     worksheet = connect_to_sheets()
 
-    # Set headers
     worksheet.update_cell(1, 2, "Activity_Code")
     worksheet.update_cell(1, 3, "AR-Activity")
     worksheet.update_cell(1, 4, "EN-Activity")
     worksheet.update_cell(1, 5, "Location")
     worksheet.update_cell(1, 6, "Eligible")
     worksheet.update_cell(1, 7, "Approvals")
-    
-    # Format Column B as TEXT to preserve leading zeros
     format_column_b_as_text(worksheet)
 
     codes = worksheet.col_values(1)[1:]
@@ -553,92 +436,63 @@ async def run(headless: bool) -> None:
         return
 
     total_rows = len(codes)
-    
-    # Track start time for elapsed time calculation
     start_time = time.time()
-    
-    # Write initial progress - scraper starting
     write_progress('en', 'running', 0, total_rows, 'Starting EN scraper...', start_time=start_time)
 
-    base_url = BASE_URL
-    
-    # Metrics tracking
-    success_first_try = 0
-    success_second_try = 0
-    success_additional_step = 0
     total_success = 0
     total_failed = 0
-    
-    codes_success_1st = []
-    codes_success_2nd = []
-    codes_success_additional = []
     failed_codes = []
-    
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=headless)
-        page = await browser.new_page()
-        page.set_default_timeout(120_000)
+
+    for idx, code in enumerate(codes, start=2):
+        current_row_num = idx - 1
+        write_progress('en', 'running', current_row_num, total_rows,
+                       f'Processing row {current_row_num}/{total_rows}', total_success, start_time=start_time)
+
+        ok = False
+        error_msg = None
+
+        details_url = (
+            f"https://investor.sw.gov.qa/wps/portal/investors/information-center"
+            f"/ba/details?bacode={code}"
+        )
+
+        # Use closure to pass data between async page_action and outer scope
+        result_holder = {}
+
+        async def page_action(page: Page, _code=code, _idx=idx, _worksheet=worksheet, _holder=result_holder):
+            ok2, used_add, err = await process_activity_code(page, _code, _idx, _worksheet)
+            _holder['ok'] = ok2
+            _holder['error'] = err
 
         try:
-            for idx, code in enumerate(codes, start=2):
-                ok = False
-                used_additional = False
-                error_msg = None
-                
-                # Update progress - processing current row
-                current_row_num = idx - 1  # Convert to 0-based for display
-                write_progress('en', 'running', current_row_num, total_rows, 
-                             f'Processing row {current_row_num}/{total_rows}', total_success, start_time=start_time)
-
-                try:
-                    await page.goto(base_url, wait_until="domcontentloaded")
-                    await page.wait_for_load_state("networkidle", timeout=30_000)
-                    ok, used_additional, error_msg = await process_activity_code(page, code, idx, worksheet)
-                except Exception as e:
-                    error_msg = str(e)
-                    print(f"Error: {e}")
-                    await _safe_screenshot(page, os.path.join(SCRIPT_DIR, f"error_row_{idx}.png"))
-
-                if not ok:
-                    print(f"Failed to process {code}")
-                    total_failed += 1
-                    failed_codes.append(code)
-                else:
-                    total_success += 1
-                    if used_additional:
-                        success_additional_step += 1
-                        codes_success_additional.append(code)
-                    else:
-                        success_first_try += 1
-                        codes_success_1st.append(code)
-                
-                        success_first_try += 1
-                        codes_success_1st.append(code)
-            
-            # Write completion progress
-            write_progress('en', 'completed', total_rows, total_rows, 
-                         'Scraping completed successfully', total_success, start_time=start_time)
-            
+            await StealthyFetcher.async_fetch(
+                details_url,
+                headless=headless,
+                disable_resources=True,
+                network_idle=True,
+                page_action=page_action,
+                timeout=120_000,
+            )
+            ok = result_holder.get('ok', False)
+            error_msg = result_holder.get('error')
         except Exception as e:
-            # Write error progress on exception
-            error_message = f'Scraper error: {str(e)}'
-            write_progress('en', 'error', 0, total_rows, error_message, total_success, start_time=start_time)
-            print(f"Fatal error: {e}")
-            raise
-        finally:
-            try:
-                await browser.close()
-            except Exception:
-                # Browser may have already closed or crashed
-                pass
-    
-    
-    # Calculate elapsed time
+            error_msg = str(e)
+            print(f"Error: {e}")
+
+        if not ok:
+            print(f"Failed to process {code}")
+            total_failed += 1
+            failed_codes.append(code)
+        else:
+            total_success += 1
+
+    write_progress('en', 'completed', total_rows, total_rows,
+                   'Scraping completed successfully', total_success, start_time=start_time)
+
     elapsed_time = time_module.time() - start_time
     minutes = int(elapsed_time // 60)
     seconds = int(elapsed_time % 60)
-    
-    # Print terminal summary (counts only, no code lists)
+
     print("\n" + "="*70)
     print("SCRAPE SUMMARY (EN)")
     print("="*70)
@@ -650,14 +504,11 @@ async def run(headless: bool) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Scrape EN/AR details using Playwright (default headless)")
+    parser = argparse.ArgumentParser(description="Scrape EN/AR details using Scrapling (default headless)")
     parser.add_argument("--visible", action="store_true", help="Run browser visible (default is headless)")
     args = parser.parse_args()
-
     asyncio.run(run(headless=not args.visible))
 
 
 if __name__ == "__main__":
     main()
-
-
