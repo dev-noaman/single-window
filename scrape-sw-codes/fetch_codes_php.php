@@ -4,6 +4,10 @@
  * No Python. Uses PHP curl with SSL verify disabled.
  * Run: php fetch_codes_php.php
  */
+// #region agent log
+$DBG = __DIR__ . '/../debug-650286.log';
+function _dbg($loc, $msg, $data) { global $DBG; if (file_exists(dirname($DBG))) file_put_contents($DBG, json_encode(['sessionId'=>'650286','location'=>$loc,'message'=>$msg,'data'=>$data,'timestamp'=>(int)(microtime(true)*1000),'hypothesisId'=>'B']) . "\n", FILE_APPEND | LOCK_EX); }
+// #endregion
 $PROGRESS_FILE = '/tmp/fetch_progress.json';
 $API_URL = 'https://investor.sw.gov.qa/wps/portal/investors/information-center/ba/search-results/' .
     '!ut/p/z1/04_Sj9CPykssy0xPLMnMz0vMAfIjo8zivfxNXA393Q38Dbz9LA3MAt38_UyNDQ0MAk30w_' .
@@ -48,17 +52,21 @@ function fetch_page($page) {
     return [$act['content'] ?? [], $act['totalPages'] ?? 1, $act['totalElements'] ?? 0];
 }
 
+_dbg('fetch:entry', 'script started', []);
 write_progress('starting', 'Starting PHP fetch...');
+_dbg('fetch:after_starting', 'wrote starting', []);
 echo "Qatar Single Window - Fetch Codes (PHP)\n";
 
 $conn = @pg_connect($DB_DSN);
+_dbg('fetch:pg_connect', 'pg_connect done', ['ok'=>(bool)$conn]);
 if (!$conn) {
     write_progress('error', 'Database connection failed');
     exit(1);
 }
 write_progress('running', 'Database connected');
 
-$content, $total_pages, $total_el = fetch_page(1);
+list($content, $total_pages, $total_el) = fetch_page(1);
+_dbg('fetch:first_page', 'first API call', ['content_count'=>is_array($content)?count($content):0,'total_pages'=>$total_pages]);
 if ($content === null) {
     write_progress('error', 'Could not reach MOCI API');
     pg_close($conn);

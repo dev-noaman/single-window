@@ -3,14 +3,18 @@
  * Real-time progress endpoint - reads from progress file
  * No buffering, instant updates
  */
-
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 
 $progressFile = '/tmp/fetch_progress.json';
+// #region agent log
+$DBG = __DIR__ . '/../debug-650286.log';
+function _dbg_progress($loc, $msg, $data) { global $DBG; @file_put_contents($DBG, json_encode(['sessionId'=>'650286','location'=>$loc,'message'=>$msg,'data'=>$data,'timestamp'=>(int)(microtime(true)*1000),'hypothesisId'=>'D']) . "\n", FILE_APPEND | LOCK_EX); }
+// #endregion
 
 try {
     if (!file_exists($progressFile)) {
+        _dbg_progress('progress:no_file', 'progress file missing', ['path'=>$progressFile]);
         // No progress file yet - container might not be running
         echo json_encode([
             'success' => false,
@@ -23,7 +27,7 @@ try {
     // Read progress file
     $progressData = file_get_contents($progressFile);
     $progress = json_decode($progressData, true);
-    
+    if (($progress['status'] ?? '') === 'pending') _dbg_progress('progress:read', 'read progress', ['status'=>$progress['status']??'?']);
     if (!$progress) {
         throw new Exception('Failed to parse progress data');
     }
