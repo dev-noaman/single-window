@@ -162,9 +162,10 @@ jobs:
             cd "$REPO_DIR/scrape-sw-codes"
 
             echo "[*] Killing stale processes..."
-            # Use path-based patterns to avoid matching the deploy script (which contains these strings)
-            pkill -f 'scrape-sw-codes/discover_codes\.py' 2>/dev/null || true
-            pkill -f 'scrape-sw-codes/.*fetch_codes_php' 2>/dev/null || true
+            # Exclude our own PID ($$) — pkill -f would match the deploy script and kill it
+            MY_PID=$$
+            for pid in $(pgrep -f 'discover_codes\.py' 2>/dev/null); do [ "$pid" != "$MY_PID" ] && kill -TERM "$pid" 2>/dev/null; done || true
+            for pid in $(pgrep -f 'fetch_codes_php' 2>/dev/null); do [ "$pid" != "$MY_PID" ] && kill -TERM "$pid" 2>/dev/null; done || true
             rm -f /tmp/fetch_progress.json 2>/dev/null || true
             rm -f "$REPO_DIR/scrape-sw-codes/trigger-fetch-codes2.php" "$REPO_DIR/scrape-sw-codes/discover_codes2.py" 2>/dev/null || true
 
