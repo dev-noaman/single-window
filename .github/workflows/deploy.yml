@@ -21,6 +21,7 @@ jobs:
           request_pty: true
           script: |
             set -e
+            trap 'echo "[FATAL] Deploy failed near line (check above for last [OK] or [*])"; exit 1' ERR
             REPO_DIR="/root/scrapers"
             REPO_URL="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/dev-noaman/single-window.git"
             export GIT_TERMINAL_PROMPT=0
@@ -137,9 +138,9 @@ jobs:
                   cid=$(docker compose ps -q "$cname" 2>/dev/null) || true
                   [ -n "$cid" ] && docker rm -f "$cid" 2>/dev/null || true
                 done
-                # Also remove by container_name defined in compose file
-                grep -oP 'container_name:\s*\K\S+' docker-compose.yml 2>/dev/null | while read cn; do
-                  docker rm -f "$cn" 2>/dev/null || true
+                # Also remove by container_name defined in compose file (portable: no grep -P)
+                grep 'container_name:' docker-compose.yml 2>/dev/null | sed -n 's/.*container_name:[[:space:]]*\([^[:space:]]*\).*/\1/p' | while read cn; do
+                  [ -n "$cn" ] && docker rm -f "$cn" 2>/dev/null || true
                 done
                 docker compose build --no-cache --quiet
                 docker compose up -d
@@ -162,6 +163,7 @@ jobs:
 
             echo "[*] Killing stale processes..."
             pkill -f '[d]iscover_codes\.py' 2>/dev/null || true
+            pkill -f '[d]iscover_codes2\.py' 2>/dev/null || true
             rm -f /tmp/fetch_progress.json 2>/dev/null || true
 
             echo "[*] Stopping old Docker containers..."
