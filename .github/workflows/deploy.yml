@@ -437,6 +437,17 @@ jobs:
             echo ""
             echo "[*] Deploying officernd-api..."
             cd "$REPO_DIR/officernd" 2>/dev/null && (
+              # Ensure config/.env exists with minimum required vars
+              mkdir -p config
+              if [ ! -f config/.env ]; then
+                cat > config/.env << 'ENVEOF'
+OFFICERND_ORG_SLUG=arafat-business-centers
+OFFICERND_GRANT_TYPE=client_credentials
+OFFICERND_SCOPE=flex.*
+DATABASE_URL=postgresql://officernd_user:OfficerndPass2024@localhost:5432/officernd
+ENVEOF
+                echo "[OK] Created officernd config/.env with defaults"
+              fi
               [ -f config/.env ] && sed -i 's/host\.docker\.internal/localhost/g' config/.env
               # Use venv to avoid system pip conflicts (urllib3 etc.)
               apt-get install -y -qq python3-venv 2>/dev/null || true
