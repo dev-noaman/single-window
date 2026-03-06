@@ -17,12 +17,15 @@ jobs:
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
+        env:
+          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           password: ${{ secrets.VPS_PASS }}
           command_timeout: 90m
           request_pty: true
+          envs: GOOGLE_CREDENTIALS_JSON
           script: |
             set -e
             export PATH="$PATH:/usr/bin:/usr/local/bin:/snap/bin"
@@ -231,6 +234,16 @@ jobs:
             fi
             echo "[OK] .env file present"
 
+            # --- Write secret files from GitHub Secrets ---
+            # Google credentials for gsheet scraper
+            if [ -n "$GOOGLE_CREDENTIALS_JSON" ]; then
+              mkdir -p "$REPO_DIR/scrape-sw-gsheet/drive"
+              echo "$GOOGLE_CREDENTIALS_JSON" > "$REPO_DIR/scrape-sw-gsheet/drive/google-credentials.json"
+              echo "[OK] Google credentials written"
+            else
+              echo "[WARN] GOOGLE_CREDENTIALS_JSON secret not set — gsheet scrapers will fail"
+            fi
+
             # BillionMail is installed separately at /opt/BillionMail (see below)
 
             # --- Setup host PostgreSQL databases ---
@@ -269,7 +282,7 @@ jobs:
             docker compose down --remove-orphans 2>/dev/null || true
 
             # Force remove any leftover containers by name (excludes BillionMail — managed separately)
-            for cn in API-SCRAPER API-CR PORTAL SW_GSHEET GSHEET_SCRAPER_EN GSHEET_SCRAPER_AR GSHEET_SCRAPER_WEB EVOLUTION-API EVOLUTION-REDIS PORTAINER; do
+            for cn in API-SCRAPER API-CR PORTAL SW_GSHEET GSHEET_SCRAPER_EN GSHEET_SCRAPER_AR GSHEET_SCRAPER_WEB EVOLUTION-API EVOLUTION-REDIS EVOLUTION-POSTGRES PORTAINER; do
               docker rm -f "$cn" 2>/dev/null || true
             done
 
