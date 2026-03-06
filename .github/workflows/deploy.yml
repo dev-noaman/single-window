@@ -286,8 +286,6 @@ jobs:
             for cn in API-SCRAPER API-CR PORTAL SW_GSHEET GSHEET_SCRAPER_EN GSHEET_SCRAPER_WEB EVOLUTION-API EVOLUTION-REDIS EVOLUTION-POSTGRES PORTAINER GSHEET_SCRAPER_AR; do
               docker rm -f "$cn" 2>/dev/null || true
             done
-            # Reset Portainer data if admin setup expired (one-time fix)
-            docker volume rm scrapers_portainer_data 2>/dev/null || docker volume rm single_window_adel_portainer_data 2>/dev/null || true
 
             # Also stop any per-service compose that might still be running
             for svc in api-scraper API-CR Portal scrape-sw-gsheet; do

@@ -358,7 +358,7 @@ npm run start:prod                                     # Run on port 8088
 - **Docker networks**: `scrapers-network` (shared bridge, all root compose services). BillionMail has its own network at `/opt/BillionMail`.
 - **Deploy concurrency**: `concurrency: group: deploy-vps, cancel-in-progress: false` prevents overlapping deploys (concurrent runs caused SIGTERM 143).
 - **git clean exclusion**: `git clean -fd -e officernd/.venv` preserves the Python venv across deploys.
-- **Portainer**: Monitoring/debugging only. GitHub Actions is the source of truth for deployments. Manual Portainer changes may be overwritten on next deploy. Cloudflare Rocket Loader may block some scripts but doesn't prevent functionality.
+- **Portainer**: Monitoring/debugging only. GitHub Actions is the source of truth for deployments. Manual Portainer changes may be overwritten on next deploy. Admin credentials pre-set via `--admin-password` bcrypt hash in docker-compose.yml (admin/admin123). Cloudflare Rocket Loader may block some scripts but doesn't prevent functionality.
 - **BillionMail**: Installed separately at `/opt/BillionMail` via official installer (NOT in root compose). Email domain is `noaman.cloud`. Admin panel and webmail via `mail.noaman.cloud` subdomain. Uses own internal PostgreSQL (not host). Port 443→8443 remap in its compose to prevent stealing Cloudflare HTTPS traffic. DNS requires MX, SPF, DKIM, DMARC records.
 
 ## scrape-sw-codes Features
