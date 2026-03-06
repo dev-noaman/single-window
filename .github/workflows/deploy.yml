@@ -5,6 +5,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -248,20 +252,28 @@ jobs:
 
               # Allow Docker containers to connect via host.docker.internal
               PG_HBA=$(sudo -u postgres psql -tc "SHOW hba_file" | xargs)
+              PG_CONF=$(sudo -u postgres psql -tc "SHOW config_file" | xargs)
+              PG_CHANGED=false
               if [ -n "$PG_HBA" ] && ! grep -q "172.0.0.0/8" "$PG_HBA" 2>/dev/null; then
                 echo "# Allow Docker containers" >> "$PG_HBA"
                 echo "host    all    all    172.0.0.0/8    md5" >> "$PG_HBA"
-                systemctl reload postgresql
-                echo "[OK] PostgreSQL configured for Docker access"
+                PG_CHANGED=true
+                echo "[OK] PostgreSQL pg_hba updated for Docker access"
               fi
-
               # Ensure PostgreSQL listens on all interfaces (for host.docker.internal)
-              PG_CONF=$(sudo -u postgres psql -tc "SHOW config_file" | xargs)
               if [ -n "$PG_CONF" ] && ! grep -q "listen_addresses = '\*'" "$PG_CONF" 2>/dev/null; then
                 sed -i "s/^#\?listen_addresses.*/listen_addresses = '*'/" "$PG_CONF"
-                systemctl restart postgresql
-                echo "[OK] PostgreSQL listening on all interfaces"
+                PG_CHANGED=true
+                echo "[OK] PostgreSQL listen_addresses set to *"
               fi
+              # Always restart PostgreSQL to ensure config is applied
+              systemctl restart postgresql
+              sleep 2
+              echo "[OK] PostgreSQL restarted"
+              # Verify PostgreSQL is accepting connections on all interfaces
+              PG_LISTEN=$(sudo -u postgres psql -tc "SHOW listen_addresses" | xargs)
+              echo "[DEBUG] PostgreSQL listen_addresses: $PG_LISTEN"
+              ss -tlnp | grep 5432 || echo "[WARN] PostgreSQL not listening on 5432"
 
               echo "[OK] Evolution API database ready"
 
