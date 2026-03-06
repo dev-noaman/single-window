@@ -57,6 +57,76 @@ jobs:
             fi
             echo "[OK] Docker Compose: $(docker compose version --short)"
 
+            # --- Ensure host dependencies (Python, Node.js, PM2, nginx, PostgreSQL) ---
+            export DEBIAN_FRONTEND=noninteractive
+            NEED_APT=false
+
+            if ! command -v pip3 &>/dev/null; then
+              echo "[*] pip3 not found, will install..."
+              NEED_APT=true
+            fi
+            if ! command -v node &>/dev/null; then
+              echo "[*] Node.js not found, will install..."
+              NEED_APT=true
+            fi
+            if ! command -v nginx &>/dev/null; then
+              echo "[*] nginx not found, will install..."
+              NEED_APT=true
+            fi
+            if ! command -v psql &>/dev/null; then
+              echo "[*] PostgreSQL not found, will install..."
+              NEED_APT=true
+            fi
+
+            if [ "$NEED_APT" = true ]; then
+              apt-get update -qq
+            fi
+
+            # Python3 + pip
+            if ! command -v pip3 &>/dev/null; then
+              apt-get install -y -qq python3-pip python3-venv
+              echo "[OK] pip3 installed: $(pip3 --version)"
+            else
+              echo "[OK] pip3 found"
+            fi
+
+            # Node.js 20 LTS + npm
+            if ! command -v node &>/dev/null; then
+              curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+              apt-get install -y -qq nodejs
+              echo "[OK] Node.js installed: $(node --version)"
+            else
+              echo "[OK] Node.js found: $(node --version)"
+            fi
+
+            # PM2 (global)
+            if ! command -v pm2 &>/dev/null; then
+              npm install -g pm2
+              echo "[OK] PM2 installed: $(pm2 --version)"
+            else
+              echo "[OK] PM2 found: $(pm2 --version)"
+            fi
+
+            # nginx
+            if ! command -v nginx &>/dev/null; then
+              apt-get install -y -qq nginx
+              systemctl enable nginx
+              systemctl start nginx
+              echo "[OK] nginx installed"
+            else
+              echo "[OK] nginx found"
+            fi
+
+            # PostgreSQL
+            if ! command -v psql &>/dev/null; then
+              apt-get install -y -qq postgresql postgresql-contrib
+              systemctl enable postgresql
+              systemctl start postgresql
+              echo "[OK] PostgreSQL installed"
+            else
+              echo "[OK] PostgreSQL found"
+            fi
+
             # --- Clone or pull the repo ---
             if [ -d "$REPO_DIR/.git" ]; then
               echo "[*] Pulling latest code..."
