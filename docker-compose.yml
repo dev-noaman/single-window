@@ -185,6 +185,7 @@ services:
     image: portainer/portainer-ce:latest
     container_name: PORTAINER
     restart: unless-stopped
+    command: --admin-password '$$2y$$05$$jTSrH.qLemQFNbzqPkSRFu4F.pzbAyOZSUaTKz3Nc6UPTAXusPh/a'
     ports:
       - "9000:9000"
     volumes:
