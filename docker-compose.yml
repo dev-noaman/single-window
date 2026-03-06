@@ -100,23 +100,6 @@ services:
     networks:
       - scrapers-network
 
-  # Google Sheets Scraper - Arabic
-  gsheet-scraper-ar:
-    build: ./scrape-sw-gsheet
-    image: scraper:latest
-    container_name: GSHEET_SCRAPER_AR
-    volumes:
-      - ./scrape-sw-gsheet/drive:/app/drive:ro
-      - /tmp:/tmp
-    restart: unless-stopped
-    environment:
-      - PYTHONUNBUFFERED=1
-      - DISPLAY=:99
-      - SCRAPER_LANGUAGE=ar
-    command: python scrape-AR.py
-    networks:
-      - scrapers-network
-
   # Google Sheets Scraper - PHP Web (triggers + progress)
   gsheet-scraper-web:
     image: php:8.2-cli
@@ -126,9 +109,7 @@ services:
     user: "0:0"
     volumes:
       - ./scrape-sw-gsheet/trigger-scrape-en.php:/app/trigger-scrape-en.php
-      - ./scrape-sw-gsheet/trigger-scrape-ar.php:/app/trigger-scrape-ar.php
       - ./scrape-sw-gsheet/progress-en.php:/app/progress-en.php
-      - ./scrape-sw-gsheet/progress-ar.php:/app/progress-ar.php
       - /var/run/docker.sock:/var/run/docker.sock:rw
       - /usr/bin/docker:/usr/bin/docker:ro
       - /tmp:/tmp

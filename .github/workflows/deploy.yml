@@ -282,7 +282,7 @@ jobs:
             docker compose down --remove-orphans 2>/dev/null || true
 
             # Force remove any leftover containers by name (excludes BillionMail — managed separately)
-            for cn in API-SCRAPER API-CR PORTAL SW_GSHEET GSHEET_SCRAPER_EN GSHEET_SCRAPER_AR GSHEET_SCRAPER_WEB EVOLUTION-API EVOLUTION-REDIS EVOLUTION-POSTGRES PORTAINER; do
+            for cn in API-SCRAPER API-CR PORTAL SW_GSHEET GSHEET_SCRAPER_EN GSHEET_SCRAPER_WEB EVOLUTION-API EVOLUTION-REDIS EVOLUTION-POSTGRES PORTAINER GSHEET_SCRAPER_AR; do
               docker rm -f "$cn" 2>/dev/null || true
             done
 
