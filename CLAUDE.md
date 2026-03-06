@@ -63,7 +63,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Qatar Investor Portal Scrapers - a multi-service web scraping platform that extracts business activity data from the Qatar Investor Portal (https://investor.sw.gov.qa/). Services: **api-scraper** (activity codes, Python + Scrapling + Playwright), **API-CR** (company search & certificate download), **Portal** (terminal-style UI), **scrape-sw-codes** (2800+ codes → PostgreSQL, hourly sync), **scrape-sw-gsheet** (Scrapling → Google Sheets), **officernd** (OfficeRnD API offline clone).
+Qatar Investor Portal Scrapers - a multi-service web scraping platform that extracts business activity data from the Qatar Investor Portal (https://investor.sw.gov.qa/). Services: **api-scraper** (activity codes, Python + Scrapling + Playwright), **API-CR** (company search & certificate download), **Portal** (terminal-style UI), **scrape-sw-codes** (2800+ codes → PostgreSQL, hourly sync), **scrape-sw-gsheet** (Scrapling → Google Sheets), **officernd** (OfficeRnD API offline clone), **Evolution API** (WhatsApp Business API), **BillionMail** (self-hosted email server + marketing), **Portainer** (container management UI).
 
 **Live Demo**: https://noaman.cloud
 
@@ -107,6 +107,28 @@ Qatar Investor Portal Scrapers - a multi-service web scraping platform that extr
 │  officernd-bff (NestJS+React) → Terminal-style sync UI          │
 │  580 companies x 37 endpoints → offline clone                   │
 └─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│              Evolution API (8089, Docker)                        │
+│  WhatsApp Business API (evoapicloud/evolution-api:latest)        │
+│  Redis cache + Host PostgreSQL (evolutiondb)                     │
+│  Nginx: /evolution/ on noaman.cloud                              │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│              BillionMail (8090/8443, Docker)                     │
+│  7 containers: core, postfix, dovecot, rspamd, roundcube,       │
+│  pgsql (internal 25432), redis (internal 26379)                  │
+│  Mail ports: 25, 465, 587, 143, 993, 110, 995                   │
+│  Nginx: mail.noaman.cloud subdomain                              │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│              Portainer (9000, Docker)                             │
+│  portainer/portainer-ce:latest — Container management UI         │
+│  Docker socket mount (read-only) for container visibility        │
+│  Nginx: /portainer/ on noaman.cloud                              │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ## Build and Run Commands
@@ -115,11 +137,11 @@ Qatar Investor Portal Scrapers - a multi-service web scraping platform that extr
 Push to `main` triggers `.github/workflows/deploy.yml` which:
 1. SSHs into VPS, pulls latest code from `dev-noaman/single-window` repo
 2. Force-removes orphaned containers by name (prevents "container name already in use" conflicts)
-3. Rebuilds all Docker services with `--no-cache`
-4. Docker: api-scraper, API-CR, Portal, scrape-sw-gsheet (all with --no-cache rebuild)
+3. Runs unified `docker compose up -d` from project root (single `docker-compose.yml` for all Docker services)
+4. Docker services (root compose): api-scraper, API-CR, Portal, scrape-sw-gsheet, Evolution API, Evolution Redis, Portainer, BillionMail (7 containers)
 5. Host: scrape-sw-codes (PM2 php -S 8084, pip httpx asyncpg, crontab hourly)
 6. Host: officernd-api, officernd-bff via PM2
-7. Nginx: copies noaman.cloud.nginx.conf, reloads
+7. Nginx: copies `noaman.cloud.nginx.conf` + `mail.noaman.cloud.nginx.conf`, reloads
 
 Manual trigger: Go to GitHub Actions > "Deploy to VPS" > Run workflow
 
@@ -198,6 +220,10 @@ cd scrape-sw-gsheet
 | officernd BFF | 8088 | `/api/officernd/phases` | Phase progress tracker (cached 2s) |
 | officernd BFF | 8088 | `/api/officernd/sync/run` | Trigger sync (POST, modes: full/incremental/smart) |
 | officernd BFF | 8088 | `/api/officernd/export` | Export DB as pg_dump SQL backup |
+| Evolution API | 8089 | `/` | WhatsApp Business API (internal 8080→8089) |
+| BillionMail | 8090 | `/` | Admin panel (internal 80→8090) |
+| BillionMail | 8443 | `/` | Admin panel HTTPS (internal 443→8443) |
+| Portainer | 9000 | `/` | Container management UI |
 
 ## API Response Format
 
@@ -229,7 +255,10 @@ All scrapers return:
 | `/gsheet-scraper/` | 8085 | scrape-sw-gsheet (PHP web container) |
 | `/officernd/` | 8088 | officernd-bff |
 | `/officernd-api/` | 8087 | officernd-api |
+| `/evolution/` | 8089 | Evolution API (WhatsApp Business API) |
+| `/portainer/` | 9000 | Portainer (WebSocket support for real-time UI) |
 | `/health` | 8082/health | Portal health |
+| `mail.noaman.cloud` | 8090 | BillionMail admin + RoundCube webmail (separate server block) |
 
 ## Technology Stack
 
@@ -240,21 +269,27 @@ All scrapers return:
 - **scrape-sw-gsheet**: Python 3.12, Scrapling (StealthyFetcher), Playwright, gspread, oauth2client, PHP 8.2-CLI (trigger/progress web)
 - **officernd-api**: Python 3.10+, FastAPI, Uvicorn, SQLAlchemy, asyncio
 - **officernd-bff**: NestJS 10, React 18, Vite, TypeScript, cache-manager
+- **Evolution API**: Docker image `evoapicloud/evolution-api:latest`, Redis, host PostgreSQL (`evolutiondb`)
+- **BillionMail**: 7 Docker containers (`billionmail/core:4.9.0`, `billionmail/postfix:1.6`, `billionmail/dovecot:1.6`, `billionmail/rspamd:1.2`, `roundcube/roundcubemail:1.6.11-fpm-alpine`, `postgres:17.4-alpine`, `redis:7.4.2-alpine`)
+- **Portainer**: Docker image `portainer/portainer-ce:latest`, Docker socket mount
 
 ## Host PostgreSQL (shared, no conflict)
 
-Single PostgreSQL instance on the host (port 5432). Two separate databases:
+Single PostgreSQL instance on the host (port 5432). Three separate databases:
 
-| Service           | Database   | User          | Purpose                    |
-|-------------------|------------|---------------|----------------------------|
-| officernd         | `officernd`| `officernd_user` | OfficeRnD sync data     |
-| scrape-sw-codes   | `codesdb`  | `codesuser`   | Business activity codes   |
+| Service           | Database      | User             | Purpose                    |
+|-------------------|---------------|------------------|----------------------------|
+| officernd         | `officernd`   | `officernd_user` | OfficeRnD sync data        |
+| scrape-sw-codes   | `codesdb`     | `codesuser`      | Business activity codes    |
+| Evolution API     | `evolutiondb` | `evolution_user` | WhatsApp instances/messages |
+
+BillionMail uses its own bundled PostgreSQL (internal, port 25432 localhost-only) — NOT the host PostgreSQL.
 
 Docker containers connect via `host.docker.internal:5432`. Host services (officernd-api, officernd-bff via PM2) use `localhost:5432`. Deploy-to-Docker.ps1 auto-replaces `host.docker.internal` with `localhost` in .env for host services.
 
 ## Container Names
 
-VPS path `/root/scrapers/`. Docker: `API-SCRAPER`, `API-CR`, `PORTAL`, `SW_GSHEET`, `GSHEET_SCRAPER_EN`, `GSHEET_SCRAPER_AR`, `GSHEET_SCRAPER_WEB`. Host (PM2): `sw-codes-web` (port 8084), `officernd-api` (8087), `officernd-bff` (8088).
+VPS path `/root/scrapers/`. Docker (unified root compose): `API-SCRAPER`, `API-CR`, `PORTAL`, `SW_GSHEET`, `GSHEET_SCRAPER_EN`, `GSHEET_SCRAPER_AR`, `GSHEET_SCRAPER_WEB`, `EVOLUTION-API`, `EVOLUTION-REDIS`, `PORTAINER`, `BILLIONMAIL-CORE`, `pgsql-billionmail`, `redis-billionmail`, `rspamd-billionmail`, `dovecot-billionmail`, `postfix-billionmail`, `webmail-billionmail`. Host (PM2): `sw-codes-web` (port 8084), `officernd-api` (8087), `officernd-bff` (8088).
 
 ## Key Files
 
@@ -286,6 +321,10 @@ VPS path `/root/scrapers/`. Docker: `API-SCRAPER`, `API-CR`, `PORTAL`, `SW_GSHEE
 - **officernd/api/sync_routes.py**: FastAPI sync endpoints (status, progress, phases, run, companies, export)
 - **officernd/sync/run_by_company.py**: 3-phase async sync orchestrator
 - **tests/fetch-codes.spec.js**: Playwright e2e tests for FETCH_CODES and FETCH_CODES_3 (against live noaman.cloud)
+- **docker-compose.yml**: Root unified compose — all Docker services (existing + Evolution API + BillionMail + Portainer)
+- **.env.example**: Template for all service env vars (Evolution API, BillionMail)
+- **billionmail/.env**: BillionMail-specific environment config
+- **billionmail/mail.noaman.cloud.nginx.conf**: Nginx server block for BillionMail subdomain (admin + webmail)
 
 ## Build and Run: officernd-bff
 
@@ -312,6 +351,10 @@ npm run start:prod                                     # Run on port 8088
 - **scrape-sw-codes** runs entirely on the host (no Docker). PM2 `sw-codes-web` serves PHP on port 8084. `discover_codes.py` runs directly via `python3`. Host crontab for hourly sync. Uses host PostgreSQL (`codesdb` on `localhost:5432`). Docker compose file kept for local dev only.
 - **API-CR** requirements.txt uses minimum version pins (`>=`), not exact pins — exact pins break `--no-cache` builds when PyPI versions change
 - **Portal landing page**: Only `index.php` (terminal-style) should be served. `index.html` is gitignored and excluded via `.dockerignore`.
+- **Unified Docker Compose**: All Docker services are in a single root `docker-compose.yml`. Per-service compose files in subdirectories are kept for local dev only. GitHub Actions deploys from root compose.
+- **Docker networks**: `scrapers-network` (shared, all services) + `billionmail-network` (internal, BillionMail containers only, subnet 172.66.1.0/24). BillionMail core bridges both networks.
+- **Portainer**: Monitoring/debugging only. GitHub Actions is the source of truth for deployments. Manual Portainer changes may be overwritten on next deploy.
+- **BillionMail**: Email domain is `noaman.cloud` (emails from `user@noaman.cloud`). Admin panel and webmail via `mail.noaman.cloud` subdomain. Uses own internal PostgreSQL (not host). DNS requires MX, SPF, DKIM, DMARC records.
 
 ## scrape-sw-codes Features
 
@@ -381,7 +424,8 @@ npm run start:prod                                     # Run on port 8088
 ### Docker Deployment
 - Docker and Docker Compose
 - 2GB+ RAM for VPS deployment
-- Network access to ports 8080, 8082, 8084, 8085, 8086, 8087, 8088
+- Network access to ports 8080, 8082, 8084, 8085, 8086, 8087, 8088, 8089, 8090, 9000
+- Mail ports: 25, 465, 587, 143, 993, 110, 995 (BillionMail)
 
 ### Local Development
 - Python 3.12+ (for api-scraper, API-CR)
@@ -400,6 +444,9 @@ single-window/
 ├── scrape-sw-codes/        # Business codes fetcher (host PM2)
 ├── scrape-sw-gsheet/       # Google Sheets scraper
 ├── officernd/              # OfficeRnD API clone (api/ + bff/)
+├── billionmail/            # BillionMail config (.env, nginx conf)
+├── docker-compose.yml      # Root unified compose (all Docker services)
+├── .env.example            # Environment template
 └── tests/                  # Playwright e2e tests
 ```
 

@@ -121,40 +121,50 @@ jobs:
             ls -la "$REPO_DIR/Portal/"
             echo "[OK] Portal files ready"
 
-            # --- Docker services ---
-            # Remove legacy containers from pre-refactor era (api-scraper replaces both)
+            # --- Generate .env from secrets (if not already present) ---
+            echo "[*] Checking .env file..."
+            if [ ! -f "$REPO_DIR/.env" ]; then
+              echo "[*] Creating .env from .env.example..."
+              cp "$REPO_DIR/.env.example" "$REPO_DIR/.env"
+              echo "[WARN] .env created from template — update with real values before first use"
+            fi
+            echo "[OK] .env file present"
+
+            # --- Docker services (unified compose) ---
+            echo ""
+            echo "[*] Deploying all Docker services via root docker-compose.yml..."
+            cd "$REPO_DIR"
+
+            # Remove legacy containers from pre-refactor era
             docker rm -f API-PHP API-NODE 2>/dev/null || true
 
-            DOCKER_SERVICES=("api-scraper" "API-CR" "Portal" "scrape-sw-gsheet")
+            # Stop all services from root compose
+            docker compose down --remove-orphans 2>/dev/null || true
 
-            for svc in "${DOCKER_SERVICES[@]}"; do
+            # Force remove any leftover containers by name
+            for cn in API-SCRAPER API-CR PORTAL SW_GSHEET GSHEET_SCRAPER_EN GSHEET_SCRAPER_AR GSHEET_SCRAPER_WEB EVOLUTION-API EVOLUTION-REDIS PORTAINER BILLIONMAIL-CORE pgsql-billionmail redis-billionmail rspamd-billionmail dovecot-billionmail postfix-billionmail webmail-billionmail; do
+              docker rm -f "$cn" 2>/dev/null || true
+            done
+
+            # Also stop any per-service compose that might still be running
+            for svc in api-scraper API-CR Portal scrape-sw-gsheet; do
               if [ -f "$REPO_DIR/$svc/docker-compose.yml" ]; then
-                echo ""
-                echo "[*] Deploying $svc..."
-                cd "$REPO_DIR/$svc" || { echo "[FATAL] cd $svc failed"; exit 1; }
+                cd "$REPO_DIR/$svc"
                 docker compose down --remove-orphans 2>/dev/null || true
-                # Force remove any leftover containers by name (handles orphaned containers)
-                for cname in $(docker compose config --services 2>/dev/null); do
-                  cid=$(docker compose ps -q "$cname" 2>/dev/null) || true
-                  [ -n "$cid" ] && docker rm -f "$cid" 2>/dev/null || true
-                done
-                # Also remove by container_name defined in compose file (portable: no grep -P)
-                grep 'container_name:' docker-compose.yml 2>/dev/null | sed -n 's/.*container_name:[[:space:]]*\([^[:space:]]*\).*/\1/p' | while read cn; do
-                  [ -n "$cn" ] && docker rm -f "$cn" 2>/dev/null || true
-                done
-                docker compose build --no-cache --quiet || { echo "[FATAL] docker compose build failed for $svc"; exit 1; }
-                docker compose up -d || { echo "[FATAL] docker compose up failed for $svc"; docker compose logs --tail=50; exit 1; }
-                # Verify Portal container content
-                if [ "$svc" = "Portal" ]; then
-                  echo "[DEBUG] Portal container check:"
-                  docker exec PORTAL ls /var/www/html/ 2>/dev/null || echo "[DEBUG] /var/www/html not found"
-                  docker exec PORTAL cat /etc/nginx/sites-available/default 2>/dev/null | head -3 || echo "[DEBUG] no nginx config"
-                fi
-                echo "[OK] $svc deployed"
-              else
-                echo "[SKIP] $svc - no docker-compose.yml"
+                cd "$REPO_DIR"
               fi
             done
+
+            # Build and start all services
+            docker compose build --no-cache --quiet || { echo "[FATAL] docker compose build failed"; exit 1; }
+            docker compose up -d || { echo "[FATAL] docker compose up failed"; docker compose logs --tail=50; exit 1; }
+
+            # Verify Portal container content
+            echo "[DEBUG] Portal container check:"
+            docker exec PORTAL ls /var/www/html/ 2>/dev/null || echo "[DEBUG] /var/www/html not found"
+            docker exec PORTAL cat /etc/nginx/sites-available/default 2>/dev/null | head -3 || echo "[DEBUG] no nginx config"
+
+            echo "[OK] All Docker services deployed"
 
             # --- Host service: scrape-sw-codes (PHP + Python, no Docker) ---
             echo ""
@@ -224,6 +234,11 @@ jobs:
             if [ -f "$REPO_DIR/Portal/noaman.cloud.nginx.conf" ]; then
               cp "$REPO_DIR/Portal/noaman.cloud.nginx.conf" /etc/nginx/sites-available/noaman.cloud
               echo "[OK] noaman.cloud config copied"
+            fi
+            if [ -f "$REPO_DIR/billionmail/mail.noaman.cloud.nginx.conf" ]; then
+              cp "$REPO_DIR/billionmail/mail.noaman.cloud.nginx.conf" /etc/nginx/sites-available/mail.noaman.cloud
+              ln -sf /etc/nginx/sites-available/mail.noaman.cloud /etc/nginx/sites-enabled/mail.noaman.cloud 2>/dev/null || true
+              echo "[OK] mail.noaman.cloud config copied"
             fi
             nginx -t 2>&1 && systemctl reload nginx && echo "[OK] Nginx reloaded" || echo "[WARN] Nginx config test failed"
 
