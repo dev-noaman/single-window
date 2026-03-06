@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain -- **1 marker in FR-011 (database strategy)**
+- [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -31,5 +31,5 @@
 
 ## Notes
 
-- 1 [NEEDS CLARIFICATION] marker remains in FR-011 regarding database strategy for Evolution API
-- All other checklist items pass validation
+- All checklist items pass validation
+- FR-011 resolved: Evolution API uses existing host PostgreSQL with new `evolutiondb` database (Option A)

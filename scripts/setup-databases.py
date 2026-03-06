@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-PostgreSQL setup for officernd and scrape-sw-codes:
-- Creates users and databases (officernd, codesdb)
+PostgreSQL setup for officernd, scrape-sw-codes, and evolution-api:
+- Creates users and databases (officernd, codesdb, evolutiondb)
 - Optionally creates OfficeRnD tables when officernd path is provided
 
 Idempotent: safe to run multiple times.
@@ -52,6 +52,7 @@ def create_users_and_databases() -> None:
     configs = [
         ("officernd_user", "OfficerndPass2024", "officernd"),
         ("codesuser", "CodesPass2024", "codesdb"),
+        ("evolution_user", "EvolutionPass2024", "evolutiondb"),
     ]
 
     for user, password, db in configs:
