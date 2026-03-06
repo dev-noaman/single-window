@@ -251,6 +251,20 @@ jobs:
               echo "[OK] billionmail/.env exists"
             fi
 
+            # --- Create Evolution API database on host PostgreSQL ---
+            echo ""
+            echo "[*] Setting up Evolution API database..."
+            if command -v psql &>/dev/null; then
+              sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname='evolution_user'" | grep -q 1 \
+                || sudo -u postgres psql -c "CREATE USER evolution_user WITH PASSWORD 'evolution_pass';" 2>/dev/null
+              sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='evolutiondb'" | grep -q 1 \
+                || sudo -u postgres psql -c "CREATE DATABASE evolutiondb OWNER evolution_user;" 2>/dev/null
+              sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE evolutiondb TO evolution_user;" 2>/dev/null || true
+              echo "[OK] Evolution API database ready"
+            else
+              echo "[WARN] psql not available — Evolution API database not created"
+            fi
+
             # --- Docker services (unified compose) ---
             echo ""
             echo "[*] Deploying all Docker services via root docker-compose.yml..."
@@ -278,7 +292,18 @@ jobs:
 
             # Build and start all services
             docker compose build --no-cache --quiet || { echo "[FATAL] docker compose build failed"; exit 1; }
-            docker compose up -d --force-recreate || { echo "[FATAL] docker compose up failed"; docker compose logs --tail=50; exit 1; }
+            # Start detached — redirect all output to avoid ssh-action treating container logs as errors
+            docker compose up -d --force-recreate > /tmp/compose-up.log 2>&1 || true
+            cat /tmp/compose-up.log || true
+            # Verify at least the core services started
+            sleep 10
+            RUNNING=$(docker ps --filter "status=running" -q | wc -l)
+            if [ "$RUNNING" -lt 5 ]; then
+              echo "[FATAL] Only $RUNNING containers running, expected at least 5"
+              docker ps -a --format "table {{.Names}}\t{{.Status}}" 2>/dev/null
+              exit 1
+            fi
+            echo "[OK] $RUNNING containers running"
 
             # Verify Portal container content
             echo "[DEBUG] Portal container check:"

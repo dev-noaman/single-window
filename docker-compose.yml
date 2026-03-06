@@ -167,8 +167,21 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - evolution_instances:/evolution/instances
-    env_file:
-      - .env
+    environment:
+      - SERVER_URL=${EVOLUTION_SERVER_URL:-https://noaman.cloud/evolution}
+      - SERVER_PORT=8080
+      - DATABASE_PROVIDER=${EVOLUTION_DATABASE_PROVIDER:-postgresql}
+      - DATABASE_CONNECTION_URI=${EVOLUTION_DATABASE_URI:-postgresql://evolution_user:evolution_pass@host.docker.internal:5432/evolutiondb?schema=public}
+      - DATABASE_CONNECTION_CLIENT_NAME=evolution_api
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY:-changeme}
+      - CACHE_REDIS_ENABLED=true
+      - CACHE_REDIS_URI=redis://evolution-redis:6379/6
+      - DATABASE_SAVE_DATA_INSTANCE=true
+      - DATABASE_SAVE_DATA_NEW_MESSAGE=true
+      - DATABASE_SAVE_MESSAGE_UPDATE=true
+      - DATABASE_SAVE_DATA_CONTACTS=true
+      - DATABASE_SAVE_DATA_CHATS=true
+      - LOG_LEVEL=ERROR,WARN
     networks:
       - scrapers-network
 
