@@ -70,8 +70,9 @@ class ApiConfig:
         return f"{self.base_url}/{self.org_slug}"
 
     def validate(self) -> None:
+        import logging
         if not self.org_slug:
-            raise ValueError("OFFICERND_ORG_SLUG is required")
+            logging.getLogger(__name__).warning("OFFICERND_ORG_SLUG not set - API routes will use empty org prefix")
 
 
 @dataclass(frozen=True)
@@ -98,8 +99,9 @@ class DatabaseConfig:
 
     def validate(self) -> None:
         """Validate database configuration."""
+        import logging
         if not self.database_url:
-            raise ValueError("DATABASE_URL is required")
+            logging.getLogger(__name__).warning("DATABASE_URL not set - using default postgresql://localhost:5432/officernd")
 
 
 @dataclass(frozen=True)
