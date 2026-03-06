@@ -142,13 +142,12 @@ Push to `main` triggers `.github/workflows/deploy.yml` which:
 5. BillionMail: separate install at `/opt/BillionMail` (own docker-compose.yml, `git pull` + `docker compose up -d` on deploy)
 6. Host: scrape-sw-codes (PM2 php -S 8084, pip httpx asyncpg, crontab hourly)
 7. Host: officernd-api (PM2 + Python venv + uvicorn), officernd-bff (PM2 + NestJS)
-8. Writes secret files: `GOOGLE_CREDENTIALS_JSON` → `scrape-sw-gsheet/drive/google-credentials.json`
-9. Creates `officernd/config/.env` with DB credentials if missing
-10. Nginx: copies `noaman.cloud.nginx.conf` + `mail.noaman.cloud.nginx.conf`, reloads
+8. Writes secret files: `GOOGLE_CREDENTIALS_JSON` → `scrape-sw-gsheet/drive/google-credentials.json`, `OFFICERND_ENV` → `officernd/config/.env`
+9. Nginx: copies `noaman.cloud.nginx.conf` + `mail.noaman.cloud.nginx.conf`, reloads
 
 Manual trigger: Go to GitHub Actions > "Deploy to VPS" > Run workflow
 
-**GitHub Secrets required**: `VPS_HOST`, `VPS_USER`, `VPS_PASS`, `GH_TOKEN`, `GOOGLE_CREDENTIALS_JSON`
+**GitHub Secrets required**: `VPS_HOST`, `VPS_USER`, `VPS_PASS`, `GH_TOKEN`, `GOOGLE_CREDENTIALS_JSON`, `OFFICERND_ENV`
 
 ### api-scraper (Python 3.12 + Scrapling + Playwright)
 ```bash
@@ -349,7 +348,7 @@ npm run start:prod                                     # Run on port 8088
 - **VPS repo**: `dev-noaman/single-window` (GitHub). VPS path: `/root/scrapers/`. Workflow auto-sets remote URL to prevent stale repo issues.
 - **Portal Dockerfile** is written directly via heredoc in the workflow (VPS previously had a stale nginx:alpine Dockerfile from old `dev-noaman/scrapers` repo)
 - **`scripts/Deploy-to-Docker.ps1`** exists for manual PowerShell deployment but paths assume running from project root (currently broken — use GitHub Actions instead)
-- **officernd-api** runs as PM2 host service in Python venv. PM2 command: `pm2 start .venv/bin/uvicorn --name officernd-api --interpreter .venv/bin/python --cwd /root/scrapers/officernd -- api.main:app --host 0.0.0.0 --port 8087`. The `--interpreter` flag is **required** — without it PM2 tries to run uvicorn as Node.js. Deploy creates `config/.env` with DB credentials if missing. Config validation is non-fatal (warns on missing OAuth creds — sync won't work but API serves local data).
+- **officernd-api** runs as PM2 host service in Python venv. PM2 command: `pm2 start .venv/bin/uvicorn --name officernd-api --interpreter .venv/bin/python --cwd /root/scrapers/officernd -- api.main:app --host 0.0.0.0 --port 8087`. The `--interpreter` flag is **required** — without it PM2 tries to run uvicorn as Node.js. Deploy writes `config/.env` from `OFFICERND_ENV` GitHub secret (contains OAuth credentials, full scope list, DB URL). Config validation is non-fatal (warns on missing creds — sync won't work but API serves local data). The `sed` step auto-replaces `host.docker.internal` with `localhost` in config/.env after writing.
 - **officernd-bff** connects to officernd API at `http://localhost:8087` (set in `.env` as `OFFICERND_API_URL`)
 - **officernd-bff** Vite `base: '/officernd/'` — all frontend assets and API calls are prefixed with `/officernd` to work behind nginx reverse proxy at `noaman.cloud/officernd/`
 - **scrape-sw-codes** runs entirely on the host (no Docker). PM2 `sw-codes-web` serves PHP on port 8084. `discover_codes.py` runs directly via `python3`. Host crontab for hourly sync. Uses host PostgreSQL (`codesdb` on `localhost:5432`). Docker compose file kept for local dev only.
