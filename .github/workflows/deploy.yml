@@ -319,12 +319,24 @@ jobs:
             echo ""
             echo "[*] Setting up BillionMail..."
             BMDIR="/opt/BillionMail"
-            if [ ! -d "$BMDIR/.git" ]; then
+
+            # Clean up old BillionMail containers/networks from previous custom compose
+            for cn in BILLIONMAIL-CORE pgsql-billionmail redis-billionmail rspamd-billionmail dovecot-billionmail postfix-billionmail webmail-billionmail; do
+              docker rm -f "$cn" 2>/dev/null || true
+            done
+            # Remove old overlapping networks
+            docker network rm scrapers_billionmail-network 2>/dev/null || true
+            docker network rm single_window_adel_billionmail-network 2>/dev/null || true
+            docker network ls --filter "name=billionmail" -q | xargs -r docker network rm 2>/dev/null || true
+
+            if [ ! -f "$BMDIR/.installed" ]; then
               echo "[*] Installing BillionMail from official repo..."
+              rm -rf "$BMDIR"
               cd /opt
               git clone https://github.com/aaPanel/BillionMail
               cd "$BMDIR"
               bash install.sh
+              touch "$BMDIR/.installed"
               echo "[OK] BillionMail installed"
             else
               echo "[*] BillionMail already installed, updating..."
