@@ -433,8 +433,9 @@ jobs:
                 echo "[OK] Created officernd venv"
               fi
               # Install only API runtime deps (skip seleniumbase/pytest — not needed for server)
-              .venv/bin/pip install -q requests python-dotenv sqlalchemy psycopg2-binary alembic "fastapi>=0.104" "uvicorn[standard]" 2>&1 | tail -3
-              echo "[OK] officernd-api deps installed"
+              .venv/bin/pip install -q requests python-dotenv sqlalchemy psycopg2-binary alembic "fastapi>=0.104" "uvicorn[standard]" pydantic 2>&1 | tail -3
+              # Quick import check to catch missing deps before PM2
+              .venv/bin/python -c "from api.main import create_app; print('[OK] officernd-api imports verified')" 2>&1 || echo "[WARN] officernd-api import check failed"
               [ -f "$REPO_DIR/scripts/setup-databases.py" ] && .venv/bin/python "$REPO_DIR/scripts/setup-databases.py" "$REPO_DIR/officernd" 2>&1 || true
               pm2 delete officernd-api 2>/dev/null || true
               pm2 start .venv/bin/uvicorn --name officernd-api --cwd "$REPO_DIR/officernd" -- api.main:app --host 0.0.0.0 --port 8087
