@@ -328,9 +328,12 @@ jobs:
             # --- Nginx reload ---
             echo ""
             echo "[*] Reloading nginx..."
+            # Remove default nginx site (conflicts with noaman.cloud default_server)
+            rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
             if [ -f "$REPO_DIR/Portal/noaman.cloud.nginx.conf" ]; then
               cp "$REPO_DIR/Portal/noaman.cloud.nginx.conf" /etc/nginx/sites-available/noaman.cloud
-              echo "[OK] noaman.cloud config copied"
+              ln -sf /etc/nginx/sites-available/noaman.cloud /etc/nginx/sites-enabled/noaman.cloud 2>/dev/null || true
+              echo "[OK] noaman.cloud config copied + enabled"
             fi
             if [ -f "$REPO_DIR/billionmail/mail.noaman.cloud.nginx.conf" ]; then
               cp "$REPO_DIR/billionmail/mail.noaman.cloud.nginx.conf" /etc/nginx/sites-available/mail.noaman.cloud
