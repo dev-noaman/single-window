@@ -324,10 +324,7 @@ jobs:
               cd /opt
               git clone https://github.com/aaPanel/BillionMail
               cd "$BMDIR"
-              cp env_init .env
-              mkdir -p ssl
-              cp -d -n ssl-self-signed/* ssl/
-              docker compose up -d 2>&1 || docker-compose up -d 2>&1 || true
+              bash install.sh
               echo "[OK] BillionMail installed"
             else
               echo "[*] BillionMail already installed, updating..."
