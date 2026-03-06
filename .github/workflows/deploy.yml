@@ -264,8 +264,22 @@ jobs:
               fi
 
               echo "[OK] Evolution API database ready"
+
+              # --- Create sw-codes database (codesdb) ---
+              echo "[*] Setting up sw-codes database..."
+              sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname='codesuser'" | grep -q 1 \
+                || sudo -u postgres psql -c "CREATE USER codesuser WITH PASSWORD 'CodesPass2024';" 2>/dev/null
+              sudo -u postgres psql -c "ALTER USER codesuser WITH PASSWORD 'CodesPass2024';" 2>/dev/null || true
+              sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='codesdb'" | grep -q 1 \
+                || sudo -u postgres psql -c "CREATE DATABASE codesdb OWNER codesuser;" 2>/dev/null
+              sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE codesdb TO codesuser;" 2>/dev/null || true
+              # Run init.sql to create tables
+              if [ -f "$REPO_DIR/scrape-sw-codes/init.sql" ]; then
+                PGPASSWORD=CodesPass2024 psql -h localhost -U codesuser -d codesdb -f "$REPO_DIR/scrape-sw-codes/init.sql" 2>/dev/null || true
+                echo "[OK] sw-codes database and tables ready"
+              fi
             else
-              echo "[WARN] psql not available — Evolution API database not created"
+              echo "[WARN] psql not available — databases not created"
             fi
 
             # --- Docker services (unified compose) ---
@@ -345,6 +359,16 @@ jobs:
               docker compose up -d 2>&1 || docker-compose up -d 2>&1 || true
               echo "[OK] BillionMail updated"
             fi
+            # Fix port 443 conflict: BillionMail binds 443 which steals Cloudflare HTTPS traffic
+            # Change 443->8443 so host nginx keeps control of HTTPS via Cloudflare
+            if [ -f "$BMDIR/docker-compose.yml" ]; then
+              if grep -q '"443:443"' "$BMDIR/docker-compose.yml" 2>/dev/null || grep -q "'443:443'" "$BMDIR/docker-compose.yml" 2>/dev/null; then
+                sed -i 's/443:443/8443:443/g' "$BMDIR/docker-compose.yml"
+                cd "$BMDIR"
+                docker compose up -d 2>&1 || docker-compose up -d 2>&1 || true
+                echo "[OK] BillionMail port 443 remapped to 8443"
+              fi
+            fi
             # Check if BillionMail core is running
             sleep 5
             if docker ps --filter "name=billionmail" --format '{{.Names}}' 2>/dev/null | grep -q .; then
@@ -406,7 +430,7 @@ jobs:
             echo "[*] Deploying officernd-api..."
             cd "$REPO_DIR/officernd" 2>/dev/null && (
               [ -f config/.env ] && sed -i 's/host\.docker\.internal/localhost/g' config/.env
-              [ -f config/requirements.txt ] && pip3 install --break-system-packages -q -r config/requirements.txt 2>&1 | tail -2
+              [ -f config/requirements.txt ] && pip3 install --break-system-packages --ignore-installed -q -r config/requirements.txt 2>&1 | tail -2
               [ -f "$REPO_DIR/scripts/setup-databases.py" ] && python3 "$REPO_DIR/scripts/setup-databases.py" "$REPO_DIR/officernd" 2>&1 || true
               pm2 delete officernd-api 2>/dev/null || true
               pm2 start "uvicorn api.main:app --host 0.0.0.0 --port 8087" --name officernd-api
