@@ -138,7 +138,7 @@ jobs:
               git remote set-url origin "$REPO_URL"
               git fetch origin main
               git reset --hard origin/main
-              git clean -fd
+              git clean -fd -e officernd/.venv
             else
               echo "[*] Cloning repository..."
               rm -rf "$REPO_DIR"
@@ -426,7 +426,9 @@ jobs:
             cd "$REPO_DIR/officernd" 2>/dev/null && (
               [ -f config/.env ] && sed -i 's/host\.docker\.internal/localhost/g' config/.env
               # Use venv to avoid system pip conflicts (urllib3 etc.)
-              if [ ! -d ".venv" ]; then
+              apt-get install -y -qq python3-venv 2>/dev/null || true
+              if [ ! -d ".venv/bin" ]; then
+                rm -rf .venv
                 python3 -m venv .venv
                 echo "[OK] Created officernd venv"
               fi
