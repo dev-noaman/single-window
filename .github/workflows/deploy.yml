@@ -263,6 +263,34 @@ jobs:
 
             echo "[OK] All Docker services deployed"
 
+            # --- BillionMail first-run initialization ---
+            echo "[*] Checking BillionMail status..."
+            sleep 10  # Give containers time to fully start
+            if docker ps --filter "name=BILLIONMAIL-CORE" --filter "status=running" -q | grep -q .; then
+              echo "[OK] BILLIONMAIL-CORE is running"
+              # Check if BillionMail responds on port 8090
+              if ! curl -sf --max-time 5 http://127.0.0.1:8090/ >/dev/null 2>&1; then
+                echo "[WARN] BillionMail not responding on 8090 yet — may need init"
+                # Try running init if available
+                docker exec BILLIONMAIL-CORE /opt/init-db.sh 2>/dev/null && echo "[OK] BillionMail DB initialized" || echo "[INFO] BillionMail init script not found or already run"
+                sleep 5
+                # Restart core after init
+                docker restart BILLIONMAIL-CORE 2>/dev/null || true
+                sleep 10
+                curl -sf --max-time 5 http://127.0.0.1:8090/ >/dev/null 2>&1 && echo "[OK] BillionMail responding on 8090" || echo "[WARN] BillionMail still not responding — check logs with: docker logs BILLIONMAIL-CORE"
+              else
+                echo "[OK] BillionMail responding on 8090"
+              fi
+            else
+              echo "[WARN] BILLIONMAIL-CORE not running — check logs with: docker logs BILLIONMAIL-CORE"
+              docker logs BILLIONMAIL-CORE --tail=20 2>&1 || true
+            fi
+
+            # --- Container health summary ---
+            echo ""
+            echo "[*] Container status:"
+            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || true
+
             # --- Host service: scrape-sw-codes (PHP + Python, no Docker) ---
             echo ""
             echo "[*] Deploying scrape-sw-codes (host)..."
