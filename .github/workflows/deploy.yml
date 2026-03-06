@@ -229,53 +229,16 @@ jobs:
               cp "$REPO_DIR/.env.example" "$REPO_DIR/.env"
               echo "[WARN] .env created from template — update with real values before first use"
             fi
-            # Fix stale Evolution API env vars from old .env.example
-            if grep -q "your-password" "$REPO_DIR/.env" 2>/dev/null; then
-              sed -i 's|EVOLUTION_DATABASE_URI=.*|EVOLUTION_DATABASE_URI=postgresql://evolution_user:evolution_pass@host.docker.internal:5432/evolutiondb?schema=public|' "$REPO_DIR/.env"
-              echo "[OK] Fixed stale Evolution API URI in .env"
-            fi
             echo "[OK] .env file present"
 
             # BillionMail is installed separately at /opt/BillionMail (see below)
 
-            # --- Create Evolution API database on host PostgreSQL ---
+            # --- Setup host PostgreSQL databases ---
             echo ""
-            echo "[*] Setting up Evolution API database..."
+            echo "[*] Setting up host PostgreSQL..."
             if command -v psql &>/dev/null; then
-              sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname='evolution_user'" | grep -q 1 \
-                || sudo -u postgres psql -c "CREATE USER evolution_user WITH PASSWORD 'evolution_pass';" 2>/dev/null
-              # Always reset password in case it was created with wrong one
-              sudo -u postgres psql -c "ALTER USER evolution_user WITH PASSWORD 'evolution_pass';" 2>/dev/null || true
-              sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='evolutiondb'" | grep -q 1 \
-                || sudo -u postgres psql -c "CREATE DATABASE evolutiondb OWNER evolution_user;" 2>/dev/null
-              sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE evolutiondb TO evolution_user;" 2>/dev/null || true
-
-              # Allow Docker containers to connect via host.docker.internal
-              PG_HBA=$(sudo -u postgres psql -tc "SHOW hba_file" | xargs)
-              PG_CONF=$(sudo -u postgres psql -tc "SHOW config_file" | xargs)
-              PG_CHANGED=false
-              if [ -n "$PG_HBA" ] && ! grep -q "172.0.0.0/8" "$PG_HBA" 2>/dev/null; then
-                echo "# Allow Docker containers" >> "$PG_HBA"
-                echo "host    all    all    172.0.0.0/8    md5" >> "$PG_HBA"
-                PG_CHANGED=true
-                echo "[OK] PostgreSQL pg_hba updated for Docker access"
-              fi
-              # Ensure PostgreSQL listens on all interfaces (for host.docker.internal)
-              if [ -n "$PG_CONF" ] && ! grep -q "listen_addresses = '\*'" "$PG_CONF" 2>/dev/null; then
-                sed -i "s/^#\?listen_addresses.*/listen_addresses = '*'/" "$PG_CONF"
-                PG_CHANGED=true
-                echo "[OK] PostgreSQL listen_addresses set to *"
-              fi
-              # Always restart PostgreSQL to ensure config is applied
-              systemctl restart postgresql
-              sleep 2
-              echo "[OK] PostgreSQL restarted"
-              # Verify PostgreSQL is accepting connections on all interfaces
-              PG_LISTEN=$(sudo -u postgres psql -tc "SHOW listen_addresses" | xargs)
-              echo "[DEBUG] PostgreSQL listen_addresses: $PG_LISTEN"
-              ss -tlnp | grep 5432 || echo "[WARN] PostgreSQL not listening on 5432"
-
-              echo "[OK] Evolution API database ready"
+              # Evolution API now uses its own Docker PostgreSQL container (evolution-postgres)
+              # No host DB setup needed for Evolution API
 
               # --- Create sw-codes database (codesdb) ---
               echo "[*] Setting up sw-codes database..."

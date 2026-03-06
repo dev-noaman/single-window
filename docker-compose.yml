@@ -143,6 +143,20 @@ services:
   # NEW SERVICES
   # ===========================================
 
+  # Evolution API - PostgreSQL database
+  evolution-postgres:
+    image: postgres:15
+    container_name: EVOLUTION-POSTGRES
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=evolution_user
+      - POSTGRES_PASSWORD=evolution_pass
+      - POSTGRES_DB=evolutiondb
+    volumes:
+      - evolution_postgres_data:/var/lib/postgresql/data
+    networks:
+      - scrapers-network
+
   # Evolution API - Redis cache
   evolution-redis:
     image: redis:latest
@@ -163,16 +177,15 @@ services:
       - "8089:8080"
     depends_on:
       - evolution-redis
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - evolution-postgres
     volumes:
       - evolution_instances:/evolution/instances
     environment:
       - SERVER_URL=${EVOLUTION_SERVER_URL:-https://noaman.cloud/evolution}
       - SERVER_PORT=8080
       - DATABASE_ENABLED=true
-      - DATABASE_PROVIDER=${EVOLUTION_DATABASE_PROVIDER:-postgresql}
-      - DATABASE_CONNECTION_URI=${EVOLUTION_DATABASE_URI:-postgresql://evolution_user:evolution_pass@host.docker.internal:5432/evolutiondb?schema=public}
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgresql://evolution_user:evolution_pass@evolution-postgres:5432/evolutiondb?schema=public
       - DATABASE_CONNECTION_CLIENT_NAME=evolution_api
       - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY:-changeme}
       - CACHE_REDIS_ENABLED=true
@@ -219,6 +232,7 @@ networks:
 
 volumes:
   # Evolution API
+  evolution_postgres_data:
   evolution_redis_data:
   evolution_instances:
 
