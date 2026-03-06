@@ -364,6 +364,53 @@ npm run start:prod                                     # Run on port 8088
 - **Progress polling**: 1.5s interval for near-realtime progress updates
 - **API coverage**: 80/80 GET endpoints from OfficeRnD reference docs implemented (100%). 63 write endpoints (POST/PUT/DELETE) intentionally skipped (read-only clone).
 
+## Features
+
+- **Python Scrapling** - StealthyFetcher + Playwright for reliable scraping
+- **Web Interface** - Interactive portal for testing and usage
+- **Google Sheets Integration** - Automated scraping to Google Sheets with EN/AR support
+- **Real-time Progress Monitoring** - Live updates for scraper operations
+- **JSON API** - Clean REST API responses
+- **Arabic Support** - Extracts both English and Arabic content
+- **PostgreSQL Database** - Business activity codes with smart sync
+- **Docker Ready** - Complete containerization
+- **Production Ready** - Health checks, auto-restart, proper timeouts
+
+## Requirements
+
+### Docker Deployment
+- Docker and Docker Compose
+- 2GB+ RAM for VPS deployment
+- Network access to ports 8080, 8082, 8084, 8085, 8086, 8087, 8088
+
+### Local Development
+- Python 3.12+ (for api-scraper, API-CR)
+- PHP 8.2+ (for web interfaces)
+- Node.js 18+ (for officernd-bff)
+- Docker Desktop (recommended)
+
+## Project Structure
+
+```
+single-window/
+├── .github/workflows/      # GitHub Actions deployment
+├── api-scraper/            # Python + Scrapling scraper (activity codes)
+├── API-CR/                 # Python + Scrapling (company search/certs)
+├── Portal/                 # Web interface (PHP + Nginx)
+├── scrape-sw-codes/        # Business codes fetcher (host PM2)
+├── scrape-sw-gsheet/       # Google Sheets scraper
+├── officernd/              # OfficeRnD API clone (api/ + bff/)
+└── tests/                  # Playwright e2e tests
+```
+
 ## Legacy / Deprecated
 
 - **API-php**, **API-node**: Replaced by api-scraper. Deploy removes API-PHP, API-NODE containers.
+
+## License
+
+MIT
+
+## Author
+
+Noaman - [GitHub](https://github.com/dev-noaman)
