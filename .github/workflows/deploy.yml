@@ -278,7 +278,7 @@ jobs:
 
             # Build and start all services
             docker compose build --no-cache --quiet || { echo "[FATAL] docker compose build failed"; exit 1; }
-            docker compose up -d || { echo "[FATAL] docker compose up failed"; docker compose logs --tail=50; exit 1; }
+            docker compose up -d --force-recreate || { echo "[FATAL] docker compose up failed"; docker compose logs --tail=50; exit 1; }
 
             # Verify Portal container content
             echo "[DEBUG] Portal container check:"
