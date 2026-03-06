@@ -39,10 +39,18 @@ class OAuthConfig:
                 object.__setattr__(self, "scope", "")
 
     def validate(self) -> None:
-        """Validate required credentials are present."""
+        """Validate required credentials are present (warns only - sync needs these, not serving)."""
+        import logging
+        _logger = logging.getLogger(__name__)
         if not self.client_id or not self.client_secret:
-            raise ValueError("OFFICERND_CLIENT_ID and OFFICERND_CLIENT_SECRET are required")
-        
+            _logger.warning("OFFICERND_CLIENT_ID and OFFICERND_CLIENT_SECRET not set - sync will not work")
+        elif self.grant_type == "password" and (not self.username or not self.password):
+            _logger.warning("OFFICERND_USERNAME and OFFICERND_PASSWORD not set - password grant sync will not work")
+
+    def validate_for_sync(self) -> None:
+        """Validate credentials are present before running sync (raises on missing)."""
+        if not self.client_id or not self.client_secret:
+            raise ValueError("OFFICERND_CLIENT_ID and OFFICERND_CLIENT_SECRET are required for sync")
         if self.grant_type == "password" and (not self.username or not self.password):
             raise ValueError("OFFICERND_USERNAME and OFFICERND_PASSWORD required for password grant")
 
