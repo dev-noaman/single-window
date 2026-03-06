@@ -440,12 +440,7 @@ jobs:
               # Ensure config/.env exists with minimum required vars
               mkdir -p config
               if [ ! -f config/.env ]; then
-                cat > config/.env << 'ENVEOF'
-OFFICERND_ORG_SLUG=arafat-business-centers
-OFFICERND_GRANT_TYPE=client_credentials
-OFFICERND_SCOPE=flex.*
-DATABASE_URL=postgresql://officernd_user:OfficerndPass2024@localhost:5432/officernd
-ENVEOF
+                printf 'OFFICERND_ORG_SLUG=arafat-business-centers\nOFFICERND_GRANT_TYPE=client_credentials\nOFFICERND_SCOPE=flex.*\nDATABASE_URL=postgresql://officernd_user:OfficerndPass2024@localhost:5432/officernd\n' > config/.env
                 echo "[OK] Created officernd config/.env with defaults"
               fi
               [ -f config/.env ] && sed -i 's/host\.docker\.internal/localhost/g' config/.env
