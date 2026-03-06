@@ -21,6 +21,7 @@ jobs:
           request_pty: true
           script: |
             set -e
+            export PATH="$PATH:/usr/bin:/usr/local/bin:/snap/bin"
             trap 'echo "[FATAL] Deploy failed near line (check above for last [OK] or [*])"; exit 1' ERR
             REPO_DIR="/root/scrapers"
             REPO_URL="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/dev-noaman/single-window.git"
