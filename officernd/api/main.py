@@ -87,7 +87,7 @@ def create_app(config: Optional[AppConfig] = None) -> FastAPI:
     from api.sync_routes import router as sync_router
     
     # Mount all routers under /api/v2/organizations/{org} path
-    org_slug = config.api.org_slug
+    org_slug = config.api.org_slug or "default"
     
     # Community routes (with auth)
     app.include_router(
