@@ -345,10 +345,8 @@ jobs:
               # Check if BillionMail responds on port 8090
               if ! curl -sf --max-time 5 http://127.0.0.1:8090/ >/dev/null 2>&1; then
                 echo "[WARN] BillionMail not responding on 8090 yet — may need init"
-                # Try running init if available
                 docker exec BILLIONMAIL-CORE /opt/init-db.sh 2>/dev/null && echo "[OK] BillionMail DB initialized" || echo "[INFO] BillionMail init script not found or already run"
                 sleep 5
-                # Restart core after init
                 docker restart BILLIONMAIL-CORE 2>/dev/null || true
                 sleep 10
                 curl -sf --max-time 5 http://127.0.0.1:8090/ >/dev/null 2>&1 && echo "[OK] BillionMail responding on 8090" || echo "[WARN] BillionMail still not responding"
@@ -356,11 +354,26 @@ jobs:
                 echo "[OK] BillionMail responding on 8090"
               fi
             else
-              echo "[WARN] BILLIONMAIL-CORE not running"
+              echo "[WARN] BILLIONMAIL-CORE not running — debugging..."
+              echo "[DEBUG] Container inspect (State):"
+              docker inspect BILLIONMAIL-CORE --format='{{.State.Status}} ExitCode={{.State.ExitCode}} Error={{.State.Error}} OOMKilled={{.State.OOMKilled}}' 2>&1 || true
+              echo "[DEBUG] Container inspect (Entrypoint + Cmd):"
+              docker inspect BILLIONMAIL-CORE --format='Entrypoint={{.Config.Entrypoint}} Cmd={{.Config.Cmd}}' 2>&1 || true
+              echo "[DEBUG] Container inspect (Env):"
+              docker inspect BILLIONMAIL-CORE --format='{{range .Config.Env}}{{println .}}{{end}}' 2>&1 | head -20 || true
+              echo "[DEBUG] Container inspect (Mounts):"
+              docker inspect BILLIONMAIL-CORE --format='{{range .Mounts}}{{.Type}} {{.Source}} -> {{.Destination}} ({{.Mode}}){{"\n"}}{{end}}' 2>&1 || true
+              echo "[DEBUG] BILLIONMAIL-CORE logs (all):"
+              docker logs BILLIONMAIL-CORE 2>&1 || true
+              echo "[DEBUG] Trying to start and capture output:"
+              docker start BILLIONMAIL-CORE 2>&1 || true
+              sleep 5
+              docker logs BILLIONMAIL-CORE --tail=50 2>&1 || true
+              echo "[DEBUG] billionmail/.env content:"
+              cat "$REPO_DIR/billionmail/.env" 2>&1 || true
+              echo "[DEBUG] ls -la billionmail/:"
+              ls -la "$REPO_DIR/billionmail/" 2>&1 || true
             fi
-            # Always show BillionMail logs for debugging
-            echo "[DEBUG] BILLIONMAIL-CORE logs:"
-            docker logs BILLIONMAIL-CORE --tail=30 2>&1 || true
             echo "[DEBUG] Evolution API logs:"
             docker logs EVOLUTION-API --tail=15 2>&1 || true
 
