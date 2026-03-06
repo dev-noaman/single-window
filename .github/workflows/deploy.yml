@@ -458,6 +458,13 @@ jobs:
               [ -f "$REPO_DIR/scripts/setup-databases.py" ] && .venv/bin/python "$REPO_DIR/scripts/setup-databases.py" "$REPO_DIR/officernd" 2>&1 || true
               pm2 delete officernd-api 2>/dev/null || true
               pm2 start .venv/bin/uvicorn --name officernd-api --cwd "$REPO_DIR/officernd" -- api.main:app --host 0.0.0.0 --port 8087
+              sleep 5
+              if pm2 show officernd-api 2>/dev/null | grep -q "online"; then
+                echo "[OK] officernd-api running"
+              else
+                echo "[WARN] officernd-api may have crashed. PM2 logs:"
+                pm2 logs officernd-api --nostream --lines 30 2>&1 || true
+              fi
               echo "[OK] officernd-api deployed"
             ) || echo "[WARN] officernd-api skipped/failed"
             echo "[*] Deploying officernd-bff..."
