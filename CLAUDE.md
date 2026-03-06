@@ -112,7 +112,7 @@ Qatar Investor Portal Scrapers - a multi-service web scraping platform that extr
 │              Evolution API (8089, Docker)                        │
 │  WhatsApp Business API (evoapicloud/evolution-api:latest)        │
 │  Redis cache + Docker PostgreSQL (evolution-postgres container)   │
-│  Nginx: /evolution/, /manager/, /assets/ on noaman.cloud         │
+│  Nginx: /evolution/ → manager UI redirect, /manager/, /assets/    │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
@@ -220,7 +220,7 @@ cd scrape-sw-gsheet
 | officernd BFF | 8088 | `/api/officernd/phases` | Phase progress tracker (cached 2s) |
 | officernd BFF | 8088 | `/api/officernd/sync/run` | Trigger sync (POST, modes: full/incremental/smart) |
 | officernd BFF | 8088 | `/api/officernd/export` | Export DB as pg_dump SQL backup |
-| Evolution API | 8089 | `/` | WhatsApp Business API (internal 8080→8089) |
+| Evolution API | 8089 | `/` | WhatsApp Business API (internal 8080→8089). Manager: admin key `Swa@Adel2022`, server URL `https://noaman.cloud/evolution` |
 | BillionMail | 8090 | `/` | Admin panel (internal 80→8090) |
 | BillionMail | 8443 | `/` | Admin panel HTTPS (internal 443→8443) |
 | Portainer | 9000 | `/` | Container management UI |
@@ -255,7 +255,7 @@ All scrapers return:
 | `/gsheet-scraper/` | 8085 | scrape-sw-gsheet (PHP web container) |
 | `/officernd/` | 8088 | officernd-bff |
 | `/officernd-api/` | 8087 | officernd-api |
-| `/evolution/` | 8089 | Evolution API (WhatsApp Business API) |
+| `/evolution/` | 302 → `/evolution/manager/` | Evolution API (exact path redirects to Manager UI; subpaths proxy to API) |
 | `/manager/` | 8089/manager/ | Evolution API Manager UI (Vite SPA, loads from absolute /manager/ path) |
 | `/assets/` | 8089/assets/ | Evolution API Manager assets (Vite build outputs) |
 | `/portainer/` | 9000 | Portainer (WebSocket support for real-time UI, ~10s initial load) |
@@ -272,7 +272,7 @@ All scrapers return:
 - **scrape-sw-gsheet**: Python 3.12, Scrapling (StealthyFetcher), Playwright, gspread, oauth2client, PHP 8.2-CLI (trigger/progress web)
 - **officernd-api**: Python 3.10+, FastAPI, Uvicorn, SQLAlchemy, asyncio
 - **officernd-bff**: NestJS 10, React 18, Vite, TypeScript, cache-manager
-- **Evolution API**: Docker image `evoapicloud/evolution-api:latest`, Redis, Docker PostgreSQL (`evolution-postgres` container, NOT host PG)
+- **Evolution API**: Docker image `evoapicloud/evolution-api:latest` (v2.3.7), Redis, Docker PostgreSQL (`evolution-postgres` container, NOT host PG). API key hardcoded in docker-compose.yml. Server URL: `https://noaman.cloud/evolution`
 - **BillionMail**: 7 Docker containers (`billionmail/core:4.9.0`, `billionmail/postfix:1.6`, `billionmail/dovecot:1.6`, `billionmail/rspamd:1.2`, `roundcube/roundcubemail:1.6.11-fpm-alpine`, `postgres:17.4-alpine`, `redis:7.4.2-alpine`). Installed separately at `/opt/BillionMail` with its own docker-compose.yml — NOT in root compose.
 - **Portainer**: Docker image `portainer/portainer-ce:latest`, Docker socket mount
 
