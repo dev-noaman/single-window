@@ -162,13 +162,13 @@ services:
     volumes:
       - evolution_instances:/evolution/instances
     environment:
-      - SERVER_URL=${EVOLUTION_SERVER_URL:-https://noaman.cloud/evolution}
+      - SERVER_URL=https://noaman.cloud/evolution
       - SERVER_PORT=8080
       - DATABASE_ENABLED=true
       - DATABASE_PROVIDER=postgresql
       - DATABASE_CONNECTION_URI=postgresql://evolution_user:evolution_pass@evolution-postgres:5432/evolutiondb?schema=public
       - DATABASE_CONNECTION_CLIENT_NAME=evolution_api
-      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY:-changeme}
+      - AUTHENTICATION_API_KEY=Swa@Adel2022
       - CACHE_REDIS_ENABLED=true
       - CACHE_REDIS_URI=redis://evolution-redis:6379/6
       - DATABASE_SAVE_DATA_INSTANCE=true
