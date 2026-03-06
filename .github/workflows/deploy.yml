@@ -227,6 +227,28 @@ jobs:
             fi
             echo "[OK] .env file present"
 
+            # Generate billionmail/.env if missing (BillionMail core reads this)
+            if [ ! -f "$REPO_DIR/billionmail/.env" ]; then
+              echo "[*] Creating billionmail/.env with defaults..."
+              mkdir -p "$REPO_DIR/billionmail"
+              cat > "$REPO_DIR/billionmail/.env" << 'BMENV'
+            BILLIONMAIL_HOSTNAME=noaman.cloud
+            ADMIN_USERNAME=admin
+            ADMIN_PASSWORD=admin
+            SafePath=admin
+            DBNAME=billionmail
+            DBUSER=billionmail
+            DBPASS=billionmail
+            REDISPASS=billionmail
+            TZ=Asia/Qatar
+            IPV4_NETWORK=172.66.1
+            BMENV
+              sed -i 's/^            //' "$REPO_DIR/billionmail/.env"
+              echo "[OK] billionmail/.env created"
+            else
+              echo "[OK] billionmail/.env exists"
+            fi
+
             # --- Docker services (unified compose) ---
             echo ""
             echo "[*] Deploying all Docker services via root docker-compose.yml..."
@@ -277,14 +299,18 @@ jobs:
                 # Restart core after init
                 docker restart BILLIONMAIL-CORE 2>/dev/null || true
                 sleep 10
-                curl -sf --max-time 5 http://127.0.0.1:8090/ >/dev/null 2>&1 && echo "[OK] BillionMail responding on 8090" || echo "[WARN] BillionMail still not responding — check logs with: docker logs BILLIONMAIL-CORE"
+                curl -sf --max-time 5 http://127.0.0.1:8090/ >/dev/null 2>&1 && echo "[OK] BillionMail responding on 8090" || echo "[WARN] BillionMail still not responding"
               else
                 echo "[OK] BillionMail responding on 8090"
               fi
             else
-              echo "[WARN] BILLIONMAIL-CORE not running — check logs with: docker logs BILLIONMAIL-CORE"
-              docker logs BILLIONMAIL-CORE --tail=20 2>&1 || true
+              echo "[WARN] BILLIONMAIL-CORE not running"
             fi
+            # Always show BillionMail logs for debugging
+            echo "[DEBUG] BILLIONMAIL-CORE logs:"
+            docker logs BILLIONMAIL-CORE --tail=30 2>&1 || true
+            echo "[DEBUG] Evolution API logs:"
+            docker logs EVOLUTION-API --tail=15 2>&1 || true
 
             # --- Container health summary ---
             echo ""
