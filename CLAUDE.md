@@ -224,14 +224,12 @@ All scrapers return:
 |------|-------------|---------|
 | `/` | 8082 | Portal |
 | `/api-scraper/` | 8080 | api-scraper |
-| `/api-cr/` | 8086 | API-CR (fallback; Portal uses cr.noaman.cloud in prod) |
+| `/api-cr/` | 8086 | API-CR (Scrapling + Playwright; note: Cloudflare may 524 on long searches) |
 | `/sw-codes/` | 8084 | scrape-sw-codes (PM2 PHP) |
 | `/gsheet-scraper/` | 8085 | scrape-sw-gsheet (PHP web container) |
 | `/officernd/` | 8088 | officernd-bff |
 | `/officernd-api/` | 8087 | officernd-api |
 | `/health` | 8082/health | Portal health |
-
-**cr.noaman.cloud** (separate server block): Direct proxy to 8086. Bypasses Cloudflare for SCRAPE_CR (avoids 524 timeout). DNS: A → VPS IP, grey cloud. SSL: deploy runs certbot; if failed: `certbot certonly --webroot -w /var/www/html -d cr.noaman.cloud`
 
 ## Technology Stack
 
