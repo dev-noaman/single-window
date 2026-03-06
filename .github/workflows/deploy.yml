@@ -439,8 +439,8 @@ jobs:
             cd "$REPO_DIR/officernd" 2>/dev/null && (
               # Ensure config/.env exists with minimum required vars
               mkdir -p config
-              if [ ! -f config/.env ] || ! grep -q OFFICERND_CLIENT_ID config/.env; then
-                printf 'OFFICERND_ORG_SLUG=arafat-business-centers\nOFFICERND_CLIENT_ID=ZvJWSI3v6hBZyGnS\nOFFICERND_CLIENT_SECRET=Be4GtOyNcl4BcWFZPiBQlwH71KO7QP3l\nOFFICERND_GRANT_TYPE=client_credentials\nOFFICERND_SCOPE=flex.*\nDATABASE_URL=postgresql://officernd_user:OfficerndPass2024@localhost:5432/officernd\n' > config/.env
+              if [ ! -f config/.env ] || grep -q 'flex\.\*' config/.env || ! grep -q OFFICERND_CLIENT_ID config/.env; then
+                printf 'OFFICERND_ORG_SLUG=arafat-business-centers\nOFFICERND_CLIENT_ID=ZvJWSI3v6hBZyGnS\nOFFICERND_CLIENT_SECRET=Be4GtOyNcl4BcWFZPiBQlwH71KO7QP3l\nOFFICERND_GRANT_TYPE=client_credentials\nDATABASE_URL=postgresql://officernd_user:OfficerndPass2024@localhost:5432/officernd\n' > config/.env
                 echo "[OK] Created officernd config/.env with credentials"
               fi
               [ -f config/.env ] && sed -i 's/host\.docker\.internal/localhost/g' config/.env
