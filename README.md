@@ -1,246 +1,153 @@
 # Qatar Investor Portal Scrapers
 
-Comprehensive web scraping solution for the Qatar Investor Portal, featuring multiple implementations and deployment options.
+Comprehensive web scraping solution for the Qatar Investor Portal.
 
-🌐 **Live Demo**: [https://noaman.cloud](https://noaman.cloud)  
-📦 **GitHub**: [https://github.com/dev-noaman/scrapers](https://github.com/dev-noaman/scrapers)  
-🐳 **Docker Guide**: [Docker.md](Docker.md)
+🌐 **Live Demo**: [https://noaman.cloud](https://noaman.cloud)
 
 ## Projects
 
-### 📦 API-php (Python + Playwright)
-Python-based scraper using Playwright for browser automation.
-- **Endpoint**: `/scraper.php?code={bacode}`
-- **Example**: `http://localhost:8080/scraper.php?code=013001`
-- **Documentation**: [API-php/README.md](API-php/README.md)
-
-### 📦 API-node (Node.js + Playwright)
-Node.js-based scraper using Playwright for browser automation with TypeScript implementation.
-- **Endpoint**: `/scrape?code={bacode}`
+### 📦 api-scraper (Python + Scrapling + Playwright)
+Python-based scraper using Scrapling (StealthyFetcher) + Playwright for browser automation.
+- **Endpoint**: `/scrape?code={code}`
 - **Health Check**: `/health`
-- **Example**: `http://localhost:8081/scrape?code=013001`
-- **Documentation**: [API-node/README.md](API-node/README.md)
+- **Example**: `http://localhost:8080/scrape?code=013001`
+- **Documentation**: [CLAUDE.md](CLAUDE.md)
+
+### 📦 API-CR (Company Search & Certificates)
+Python-based scraper for company search and certificate downloads.
+- **Search**: `/search?cr={cr}` or `/search?q={query}`
+- **Download**: `/download?cr={cr}&type={CR|BOTH}`
+- **Health Check**: `/health`
+- **Example**: `http://localhost:8086/search?cr=12345`
+- **Documentation**: [CLAUDE.md](CLAUDE.md)
 
 ### 🌐 Portal (Web Interface)
 Interactive web portal for testing and using the scrapers.
 - **Access**: `http://localhost:8082/`
-- **Features**: 
+- **Features**:
   - Real-time testing with engine selection
   - JSON response viewer
-  - **📊 Google Sheets Scraper Buttons** - Trigger EN/AR scrapers with live progress monitoring
+  - Google Sheets Scraper buttons with live progress monitoring
   - Terminal-style interface with real-time updates
 
-### 📊 Fetch-codes (Business Codes API)
-RESTful API for business activity codes with MySQL database.
-- **Health Check**: `http://localhost:8000/health`
-- **Status**: `http://localhost:8000/status`
-- **Features**: Auto-fetches codes from Qatar portal, stores in database
+### 📊 scrape-sw-codes (Business Codes Fetcher)
+Fetches 2800+ business activity codes from Qatar portal to PostgreSQL.
+- **Trigger**: `http://localhost:8084/trigger-fetch-codes.php`
+- **Progress**: `http://localhost:8084/progress.php`
+- **Check Update**: `http://localhost:8084/check-update.php`
+- **Features**: Smart sync, hourly cron, real-time progress
 
-### 📊 Google Sheets Scraper (gsheet-scraper)
+### 📊 scrape-sw-gsheet (Google Sheets Scraper)
 Backend API for triggering and monitoring Google Sheets scraping operations.
-- **Trigger EN Scraper**: `http://localhost:8085/trigger-scrape-en.php`
-- **Trigger AR Scraper**: `http://localhost:8085/trigger-scrape-ar.php`
-- **Progress EN**: `http://localhost:8085/progress-en.php`
-- **Progress AR**: `http://localhost:8085/progress-ar.php`
-- **Features**: 
-  - Scrapes Qatar investor website data to Google Sheets
-  - Real-time progress monitoring via JSON files
-  - Docker container-based execution
-  - Integrated with Portal UI buttons
+- **Trigger EN**: `http://localhost:8085/trigger-scrape-en.php`
+- **Trigger AR**: `http://localhost:8085/trigger-scrape-ar.php`
+- **Progress EN/AR**: `/progress-en.php`, `/progress-ar.php`
+- **Features**: Scrapes data to Google Sheets "Filter" workbook
 
-### 🔄 Scraper (Background Service)
-Background service for continuous data collection and processing.
+### 🏢 officernd (OfficeRnD API Clone)
+Offline clone of OfficeRnD API with 580 companies and 80 endpoints.
+- **API**: `http://localhost:8087/`
+- **BFF/UI**: `http://localhost:8088/`
+- **Features**: Full sync, smart sync, export to SQL
 
 ## 🚀 Quick Start
 
-### **Docker Deployment (Recommended)**
-For complete Docker deployment instructions, see [Docker.md](Docker.md).
-
-```powershell
-# One-command deployment to VPS
-.\Deploy-to-Docker.ps1
-```
+### **Docker Deployment (GitHub Actions)**
+Push to `main` triggers automatic deployment via `.github/workflows/deploy.yml`.
 
 ### **Local Development**
 ```bash
 # Clone repository
-git clone https://github.com/dev-noaman/scrapers.git
-cd scrapers
+git clone https://github.com/dev-noaman/single-window.git
+cd single-window
 
-# Choose your implementation:
-# Python + Playwright
-cd API-php && docker compose up -d --build
+# api-scraper (Python + Scrapling)
+cd api-scraper && docker compose up -d --build
 
-# Node.js + Playwright
-cd API-node && docker compose up -d --build
+# API-CR (Company Search)
+cd API-CR && docker compose up -d --build
 
-# Web Interface
+# Portal (Web Interface)
 cd Portal && docker compose up -d --build
 ```
 
 ## Features
 
-✅ **Dual Implementation** - Choose between Python (Playwright) or Node.js (Playwright)  
-✅ **Web Interface** - Interactive portal for testing and usage  
-✅ **Google Sheets Integration** - Automated scraping to Google Sheets with EN/AR support  
-✅ **Real-time Progress Monitoring** - Live updates for scraper operations  
-✅ **JSON API** - Clean REST API responses  
-✅ **Arabic Support** - Extracts both English and Arabic content  
-✅ **Status Extraction** - Extracts activity status from details page  
-✅ **Database Integration** - MySQL with business activity codes  
-✅ **Docker Ready** - Complete containerization with one-command deployment  
-✅ **Production Ready** - Health checks, auto-restart, proper timeouts  
-✅ **Headless Browsers** - Chromium/Playwright included in containers  
+✅ **Python Scrapling** - StealthyFetcher + Playwright for reliable scraping
+✅ **Web Interface** - Interactive portal for testing and usage
+✅ **Google Sheets Integration** - Automated scraping to Google Sheets with EN/AR support
+✅ **Real-time Progress Monitoring** - Live updates for scraper operations
+✅ **JSON API** - Clean REST API responses
+✅ **Arabic Support** - Extracts both English and Arabic content
+✅ **PostgreSQL Database** - Business activity codes with smart sync
+✅ **Docker Ready** - Complete containerization
+✅ **Production Ready** - Health checks, auto-restart, proper timeouts
 
 ## Requirements
 
-### Docker Deployment (Recommended)
+### Docker Deployment
 - Docker and Docker Compose
 - 2GB+ RAM for VPS deployment
-- Network access to ports 8000, 8080, 8081, 8082
+- Network access to ports 8080, 8082, 8084, 8085, 8086, 8087, 8088
 
 ### Local Development
-- Python 3.11+ (for API-php)
-- Node.js 18+ (for API-node)  
+- Python 3.12+ (for api-scraper, API-CR)
 - PHP 8.2+ (for web interfaces)
-- Docker Desktop (optional but recommended)
+- Node.js 18+ (for officernd-bff)
+- Docker Desktop (recommended)
 
 ## Project Structure
 
 ```
-scrapers/
-├── Docker.md                # 🐳 Complete Docker deployment guide
-├── Deploy-to-Docker.ps1     # 🚀 Automated deployment script
-├── README.md               # 📋 Project overview (this file)
-├── API-php/                 # Python + Playwright implementation
-│   ├── scraper.py          # Main Python scraper
-│   ├── scraper.php         # PHP API wrapper
-│   ├── Dockerfile
-│   ├── docker-compose.yml
-│   └── README.md
-├── API-node/                # Node.js + Puppeteer implementation  
-│   ├── scraper.js          # Main Node.js scraper
-│   ├── api.php             # PHP API wrapper
-│   ├── package.json
-│   ├── Dockerfile
-│   ├── docker-compose.yml
-│   └── README.md
-├── Portal/                  # Web interface
-│   ├── index.php           # Interactive web portal
+single-window/
+├── .github/workflows/      # GitHub Actions deployment
+├── api-scraper/            # Python + Scrapling scraper (activity codes)
+│   ├── scraper.py
+│   ├── server.py
+│   └── docker-compose.yml
+├── API-CR/                 # Python + Scrapling (company search/certs)
+│   ├── auto_search_company.py
+│   ├── api_server.py
+│   └── docker-compose.yml
+├── Portal/                 # Web interface (PHP + Nginx)
+│   ├── index.php
 │   ├── nginx.conf
-│   ├── Dockerfile
 │   └── docker-compose.yml
-├── Fetch-codes/             # Business codes API + Database
-│   ├── app.py              # FastAPI application
-│   ├── init.sql            # Database schema
-│   ├── Dockerfile
-│   ├── docker-compose.yml
-│   └── For Docker.md       # Detailed setup guide
-├── docker-scraper/          # Background scraper service
-│   ├── scrape-AR.py        # Arabic scraper
-│   ├── scrape-EN.py        # English scraper
-│   ├── scrape_codes.py     # Code fetcher
+├── scrape-sw-codes/        # Business codes fetcher (host PM2)
+│   ├── discover_codes.py
+│   ├── trigger-fetch-codes.php
+│   └── progress.php
+├── scrape-sw-gsheet/       # Google Sheets scraper
+│   ├── scrape-EN.py
+│   ├── scrape-AR.py
 │   └── docker-compose.yml
-└── scraper/                 # Legacy components
-    └── Fetch-codes/
+├── officernd/              # OfficeRnD API clone
+│   ├── api/                # FastAPI backend
+│   └── bff/                # NestJS + React frontend
+└── tests/                  # Playwright e2e tests
 ```
 
 ## 📋 API Reference
 
-### Google Sheets Scraper Buttons
-
-The Portal interface includes two buttons for triggering Google Sheets scraping operations:
-
-#### **📊 SCRAPE_ENG Button**
-Triggers the English scraper to extract data from the Qatar investor website and write to Google Sheets.
-
-**How it works:**
-1. Click the **SCRAPE_ENG** button in the Portal interface
-2. Backend restarts the `GSHEET_SCRAPER_EN` Docker container
-3. Python scraper reads activity codes from Google Sheets "Filter" workbook (EN worksheet)
-4. For each code, scrapes English data from Qatar investor portal
-5. Writes results back to Google Sheets
-6. Real-time progress updates displayed in Portal terminal
-
-**Progress Monitoring:**
-- Updates every 3 seconds
-- Shows current row / total rows
-- Displays completion summary with total rows processed
-- Error messages shown in red if issues occur
-
-**Example Progress Output:**
-```
-[INFO] Starting EN scraper...
-[INFO] Processing row 5/10
-[INFO] Processing row 10/10
-[SUCCESS] Scraping completed successfully - 10 rows processed
-```
-
-#### **📊 SCRAPE_AR Button**
-Triggers the Arabic scraper with identical functionality for Arabic data.
-
-**Backend API Endpoints:**
-
-**Trigger EN Scraper:**
-```bash
-curl http://localhost:8085/trigger-scrape-en.php
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "GSHEET_SCRAPER_EN container restarted successfully",
-  "output": "GSHEET_SCRAPER_EN\n",
-  "docker_path": "/usr/bin/docker"
-}
-```
-
-**Check Progress:**
-```bash
-curl http://localhost:8085/progress-en.php
-```
-
-**Response (Running):**
-```json
-{
-  "success": true,
-  "status": "running",
-  "message": "Processing row 5/10",
-  "current_row": 5,
-  "total_rows": 10,
-  "rows_processed": 0,
-  "timestamp": 1234567890
-}
-```
-
-**Response (Completed):**
-```json
-{
-  "success": true,
-  "status": "completed",
-  "message": "Scraping completed successfully",
-  "current_row": 10,
-  "total_rows": 10,
-  "rows_processed": 10,
-  "timestamp": 1234567890
-}
-```
-
-**Error Handling:**
-- Missing Google credentials: Returns error message
-- Docker container failure: Returns error with details
-- Scraper runtime errors: Displayed in Portal with error status
-- Button re-enables after completion or error for retry
-
-**Requirements:**
-- Google credentials file at `scrape-sw-gsheet/drive/google-credentials.json`
-- Docker containers `GSHEET_SCRAPER_EN` and `GSHEET_SCRAPER_AR` configured
-- Google Sheets "Filter" workbook with EN and AR worksheets
-- Write access to `/tmp` for progress files
+### Service Endpoints
+| Service | Port | Endpoint | Description |
+|---------|------|----------|-------------|
+| api-scraper | 8080 | `/scrape?code={code}` | Activity code scraper |
+| api-scraper | 8080 | `/health` | Health check |
+| API-CR | 8086 | `/search?cr={cr}` | Company search by CR |
+| API-CR | 8086 | `/search?q={query}` | Search by CR/EN/AR name |
+| API-CR | 8086 | `/download?cr={cr}&type={CR\|BOTH}` | Download certificates |
+| Portal | 8082 | `/` | Web interface |
+| scrape-sw-codes | 8084 | `/trigger-fetch-codes.php` | Trigger code fetch |
+| scrape-sw-codes | 8084 | `/progress.php` | Fetch progress |
+| scrape-sw-codes | 8084 | `/check-update.php` | Smart update check |
+| scrape-sw-gsheet | 8085 | `/trigger-scrape-en.php` | Trigger EN scraper |
+| scrape-sw-gsheet | 8085 | `/trigger-scrape-ar.php` | Trigger AR scraper |
+| officernd API | 8087 | `/health` | OfficeRnD API |
+| officernd BFF | 8088 | `/` | OfficeRnD sync UI |
 
 ### Scraper API Response Format
-All APIs return JSON responses in the following format:
+All scrapers return JSON responses in the following format:
 
 ```json
 {
@@ -250,31 +157,13 @@ All APIs return JSON responses in the following format:
     "status": "Active",
     "name_en": "Activity Name in English",
     "name_ar": "اسم النشاط بالعربية",
-    "locations": "Main Location 1: ...\nSub Location 1: ...\nFee 1: ...",
-    "eligible": "Allowed for GCC nationals\nAllowed for Non-GCC nationals",
-    "approvals": "Approval 1: ...\nAgency 1: ..."
+    "locations": "Main Location 1: ...",
+    "eligible": "Allowed for GCC nationals...",
+    "approvals": "Approval 1: ..."
   },
   "error": null
 }
 ```
-
-### Field Descriptions
-- **activity_code**: The business activity code
-- **status**: Activity status (e.g., "Active", "Transferred", "Inactive", "Unknown")
-- **name_en**: English name of the activity
-- **name_ar**: Arabic name of the activity
-- **locations**: Location details with fees
-- **eligible**: Ownership eligibility information
-- **approvals**: Required approvals and agencies
-
-### Service Endpoints
-| Service | Port | Endpoint | Description |
-|---------|------|----------|-------------|
-| API-php | 8080 | `/scraper.php?code={code}` | Python Playwright API |
-| API-node | 8081 | `/scrape?code={code}` | Node.js Playwright API |
-| Portal | 8082 | `/` | Web Interface |
-| Fetch-codes | 8000 | `/health`, `/status` | Business Codes API |
-| gsheet-scraper | 8085 | `/trigger-scrape-en.php`, `/trigger-scrape-ar.php` | Google Sheets Scraper API |
 
 ## License
 
@@ -286,39 +175,4 @@ Noaman - [GitHub](https://github.com/dev-noaman)
 
 ## Support
 
-For issues and questions, please open an issue on [GitHub](https://github.com/dev-noaman/scrapers/issues).
-
----
-
-## Legacy Scraper Documentation
-
-The original scraper system (Selenium/Playwright with Google Sheets integration) documentation is preserved below for reference.
-
-<details>
-<summary>Click to expand legacy documentation</summary>
-
-# Qatar Investor Portal Data Scraper (EN Version)
-
-## System Overview
-
-This automated scraper extracts business activity data from the Qatar Investor Portal (https://investor.sw.gov.qa/) and saves it to a Google Spreadsheet. The system extracts the following information for each business activity:
-
-1. **Activity_Code**: The official activity code from the details page
-2. **AR-Activity**: Arabic activity name/description (extracted by switching site language to Arabic)
-3. **EN-Activity**: English activity name/description (extracted after switching back to English)
-4. **Location Data**: Extracts location information including classifications, types, and fees
-5. **Eligible Status**: Eligibility information for the activity
-6. **Approvals Data**: All required approvals and associated agencies
-
-### Technical Architecture
-
-The system uses:
-- **Selenium WebDriver** OR **Playwright**: For browser automation and interaction
-  - `code.py`: Uses Selenium with Microsoft Edge WebDriver
-  - `code_playwright.py`: Uses Playwright with Chromium (faster, more reliable)
-- **Google Sheets API**: For saving extracted data to spreadsheets
-- **Python**: As the programming language
-
-[... rest of the original README content ...]
-
-</details>
+For issues and questions, please open an issue on [GitHub](https://github.com/dev-noaman/single-window/issues).
