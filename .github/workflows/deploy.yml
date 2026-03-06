@@ -378,8 +378,28 @@ jobs:
               echo "[WARN] No BillionMail containers found"
             fi
 
-            echo "[DEBUG] Evolution API logs:"
-            docker logs EVOLUTION-API --tail=15 2>&1 || true
+            # --- Evolution API health check ---
+            echo ""
+            echo "[*] Checking Evolution API health..."
+            EVOL_OK=false
+            for i in 1 2 3 4 5 6; do
+              if curl -sf http://127.0.0.1:8089/ > /dev/null 2>&1; then
+                echo "[OK] Evolution API is healthy (attempt $i)"
+                EVOL_OK=true
+                break
+              fi
+              echo "[*] Evolution API not ready yet (attempt $i/6), waiting 10s..."
+              sleep 10
+            done
+            if [ "$EVOL_OK" = false ]; then
+              echo "[WARN] Evolution API failed to start. Container state:"
+              docker inspect EVOLUTION-API --format '{{.State.Status}} (ExitCode={{.State.ExitCode}}, Restarting={{.State.Restarting}})' 2>/dev/null || true
+              echo "[DEBUG] Evolution API logs (last 30 lines):"
+              docker logs EVOLUTION-API --tail=30 2>&1 || true
+              echo "[DEBUG] Evolution API env check:"
+              docker exec EVOLUTION-API printenv DATABASE_PROVIDER 2>/dev/null || echo "  (container not running)"
+              docker exec EVOLUTION-API printenv DATABASE_CONNECTION_URI 2>/dev/null | sed 's/:.*@/:***@/' || true
+            fi
 
             # --- Container health summary ---
             echo ""
