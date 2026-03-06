@@ -458,7 +458,7 @@ jobs:
               .venv/bin/pip install -q -r config/requirements.txt 2>&1 | tail -5
               [ -f "$REPO_DIR/scripts/setup-databases.py" ] && .venv/bin/python "$REPO_DIR/scripts/setup-databases.py" "$REPO_DIR/officernd" 2>&1 || true
               pm2 delete officernd-api 2>/dev/null || true
-              pm2 start "$REPO_DIR/officernd/.venv/bin/uvicorn api.main:app --host 0.0.0.0 --port 8087" --name officernd-api --cwd "$REPO_DIR/officernd"
+              pm2 start .venv/bin/uvicorn --name officernd-api --cwd "$REPO_DIR/officernd" -- api.main:app --host 0.0.0.0 --port 8087
               echo "[OK] officernd-api deployed"
             ) || echo "[WARN] officernd-api skipped/failed"
             echo "[*] Deploying officernd-bff..."
