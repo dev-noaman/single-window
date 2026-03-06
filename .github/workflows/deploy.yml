@@ -228,6 +228,8 @@ jobs:
             echo "[OK] .env file present"
 
             # Generate billionmail/.env if missing (BillionMail core reads this)
+            # Clean up if .env is accidentally a directory
+            [ -d "$REPO_DIR/billionmail/.env" ] && rm -rf "$REPO_DIR/billionmail/.env"
             if [ ! -f "$REPO_DIR/billionmail/.env" ]; then
               echo "[*] Creating billionmail/.env with defaults..."
               mkdir -p "$REPO_DIR/billionmail"
