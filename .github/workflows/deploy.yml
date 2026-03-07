@@ -345,19 +345,45 @@ jobs:
               echo "[*] BillionMail already installed, updating..."
               cd "$BMDIR"
               git pull origin main 2>/dev/null || git pull 2>/dev/null || true
-              docker compose up -d 2>&1 || docker-compose up -d 2>&1 || true
-              echo "[OK] BillionMail updated"
             fi
-            # Fix port 443 conflict: BillionMail binds 443 which steals Cloudflare HTTPS traffic
-            # Change 443->8443 so host nginx keeps control of HTTPS via Cloudflare
-            if [ -f "$BMDIR/docker-compose.yml" ]; then
-              if grep -q '"443:443"' "$BMDIR/docker-compose.yml" 2>/dev/null || grep -q "'443:443'" "$BMDIR/docker-compose.yml" 2>/dev/null; then
-                sed -i 's/443:443/8443:443/g' "$BMDIR/docker-compose.yml"
-                cd "$BMDIR"
-                docker compose up -d 2>&1 || docker-compose up -d 2>&1 || true
-                echo "[OK] BillionMail port 443 remapped to 8443"
+
+            # Fix 1: Create missing conf/askai directory (prevents core error spam)
+            mkdir -p "$BMDIR/conf/askai"
+
+            # Fix 2: Set HTTPS_PORT=8443 in .env (frees port 443 for nginx/Let's Encrypt)
+            if [ -f "$BMDIR/.env" ]; then
+              if grep -q "HTTPS_PORT=" "$BMDIR/.env"; then
+                sed -i 's/HTTPS_PORT=.*/HTTPS_PORT=8443/' "$BMDIR/.env"
+              else
+                echo "HTTPS_PORT=8443" >> "$BMDIR/.env"
               fi
             fi
+
+            # Fix 3: Set hostname to mail.noaman.cloud
+            if [ -f "$BMDIR/.env" ]; then
+              sed -i 's/BILLIONMAIL_HOSTNAME=.*/BILLIONMAIL_HOSTNAME=mail.noaman.cloud/' "$BMDIR/.env"
+            fi
+            if [ -f "$BMDIR/billionmail.conf" ]; then
+              sed -i 's/BILLIONMAIL_HOSTNAME=.*/BILLIONMAIL_HOSTNAME=mail.noaman.cloud/' "$BMDIR/billionmail.conf"
+            fi
+
+            # Fix 4: Remap port 443 in docker-compose.yml (fallback if .env didn't take)
+            if [ -f "$BMDIR/docker-compose.yml" ]; then
+              sed -i 's/"443:443"/"8443:443"/g; s/'\''443:443'\''/'\''8443:443'\''/g' "$BMDIR/docker-compose.yml" 2>/dev/null || true
+            fi
+
+            # Start/restart BillionMail
+            cd "$BMDIR"
+            docker compose up -d 2>&1 || docker-compose up -d 2>&1 || true
+
+            # Fix 5: SSL cert for mail.noaman.cloud (Let's Encrypt, skip if already exists)
+            if [ ! -f "/etc/letsencrypt/live/mail.noaman.cloud/fullchain.pem" ]; then
+              echo "[*] Requesting Let's Encrypt cert for mail.noaman.cloud..."
+              certbot --nginx -d mail.noaman.cloud --non-interactive --agree-tos --register-unsafely-without-email 2>&1 || echo "[WARN] certbot failed — SSL may not work for mail.noaman.cloud"
+            else
+              echo "[OK] Let's Encrypt cert for mail.noaman.cloud already exists"
+            fi
+
             # Check if BillionMail core is running
             sleep 5
             if docker ps --filter "name=billionmail" --format '{{.Names}}' 2>/dev/null | grep -q .; then
