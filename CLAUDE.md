@@ -220,9 +220,8 @@ cd scrape-sw-gsheet
 | officernd BFF | 8088 | `/api/officernd/phases` | Phase progress tracker (cached 2s) |
 | officernd BFF | 8088 | `/api/officernd/sync/run` | Trigger sync (POST, modes: full/incremental/smart) |
 | officernd BFF | 8088 | `/api/officernd/export` | Export DB as pg_dump SQL backup |
-| Evolution API | 8089 | `/` | WhatsApp Business API (internal 8080→8089). Manager: admin key `Swa@Adel2022`, server URL `https://noaman.cloud/evolution` |
-| BillionMail | 8090 | `/` | Admin panel (internal 80→8090) |
-| BillionMail | 8443 | `/` | Admin panel HTTPS (internal 443→8443) |
+| Evolution API | 8089 | `/` | WhatsApp Business API (internal 8080→8089) |
+| BillionMail | 5678 | `/` | Admin panel API (internal) |
 | Portainer | 9000 | `/` | Container management UI |
 
 ## API Response Format
@@ -263,6 +262,14 @@ All scrapers return:
 | `/locales/` | 9000/locales/ | Portainer translation files (loaded from absolute /locales/ path) |
 | `/health` | 8082/health | Portal health |
 | `mail.noaman.cloud` | 5678 | BillionMail admin panel (root redirects to safe path `/nzaYDxua`, Let's Encrypt SSL) |
+
+## Service Logins
+
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| Evolution API Manager | `https://noaman.cloud/manager/` (or `/evolution` redirects there) | Server URL: `https://noaman.cloud/evolution`, API Key: `Swa@Adel2022` |
+| BillionMail | `https://mail.noaman.cloud` (redirects to safe path) | Username: `uFa6jN1y`, Password: `XO7KXUE8` |
+| Portainer | `https://noaman.cloud/portainer/` | Username: `admin`, Password: `admin123` |
 
 ## Technology Stack
 
@@ -360,7 +367,7 @@ npm run start:prod                                     # Run on port 8088
 - **Deploy concurrency**: `concurrency: group: deploy-vps, cancel-in-progress: false` prevents overlapping deploys (concurrent runs caused SIGTERM 143).
 - **git clean exclusion**: `git clean -fd -e officernd/.venv` preserves the Python venv across deploys.
 - **Portainer**: Monitoring/debugging only. GitHub Actions is the source of truth for deployments. Manual Portainer changes may be overwritten on next deploy. Admin credentials pre-set via `--admin-password` bcrypt hash in docker-compose.yml (admin/admin123). Cloudflare Rocket Loader may block some scripts but doesn't prevent functionality.
-- **BillionMail**: Installed separately at `/opt/BillionMail` via official installer (NOT in root compose). Email domain is `noaman.cloud`, hostname `mail.noaman.cloud`. Admin panel: `https://mail.noaman.cloud` (nginx redirects root to safe path `/nzaYDxua`). Credentials in `billionmail.conf` (`ADMIN_USERNAME`/`ADMIN_PASSWORD`). Uses own internal PostgreSQL (not host). Port 443→8443 remap in `.env` to free port 443 for nginx/Let's Encrypt. `conf/askai` directory must exist (created by deploy). DNS requires MX, SPF, DKIM, DMARC records.
+- **BillionMail**: Installed separately at `/opt/BillionMail` via official installer (NOT in root compose). Email domain is `noaman.cloud`, hostname `mail.noaman.cloud`. Admin panel: `https://mail.noaman.cloud` (nginx redirects root to safe path `/nzaYDxua`). Credentials in `billionmail.conf` (`ADMIN_USERNAME`/`ADMIN_PASSWORD`). Uses own internal PostgreSQL (not host). Deploy fixes: `conf/askai` dir created, `HTTPS_PORT=8443` in `.env` (frees 443 for nginx), `BILLIONMAIL_HOSTNAME=mail.noaman.cloud`. Let's Encrypt SSL via certbot — runs **after** nginx config copy (certbot adds `listen 443 ssl` lines to the config; must re-run each deploy since config is overwritten). DNS requires MX, SPF, DKIM, DMARC records.
 
 ## scrape-sw-codes Features
 
