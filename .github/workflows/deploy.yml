@@ -376,14 +376,6 @@ jobs:
             cd "$BMDIR"
             docker compose up -d 2>&1 || docker-compose up -d 2>&1 || true
 
-            # Fix 5: SSL cert for mail.noaman.cloud (Let's Encrypt, skip if already exists)
-            if [ ! -f "/etc/letsencrypt/live/mail.noaman.cloud/fullchain.pem" ]; then
-              echo "[*] Requesting Let's Encrypt cert for mail.noaman.cloud..."
-              certbot --nginx -d mail.noaman.cloud --non-interactive --agree-tos --register-unsafely-without-email 2>&1 || echo "[WARN] certbot failed — SSL may not work for mail.noaman.cloud"
-            else
-              echo "[OK] Let's Encrypt cert for mail.noaman.cloud already exists"
-            fi
-
             # Check if BillionMail core is running
             sleep 5
             if docker ps --filter "name=billionmail" --format '{{.Names}}' 2>/dev/null | grep -q .; then
@@ -524,6 +516,11 @@ jobs:
               echo "[OK] mail.noaman.cloud config copied"
             fi
             nginx -t 2>&1 && systemctl reload nginx && echo "[OK] Nginx reloaded" || echo "[WARN] Nginx config test failed"
+
+            # --- SSL: Let's Encrypt for mail.noaman.cloud ---
+            # Must run AFTER nginx config is copied (certbot adds ssl lines to the config)
+            echo "[*] Deploying SSL for mail.noaman.cloud..."
+            certbot --nginx -d mail.noaman.cloud --non-interactive --agree-tos --register-unsafely-without-email 2>&1 || echo "[WARN] certbot failed — SSL may not work for mail.noaman.cloud"
 
             # --- Cleanup ---
             docker image prune -f 2>/dev/null || true
