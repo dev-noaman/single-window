@@ -116,11 +116,11 @@ Qatar Investor Portal Scrapers - a multi-service web scraping platform that extr
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
-│              BillionMail (8090/8443, Docker)                     │
+│              BillionMail (5678/8443, Docker)                     │
 │  7 containers: core, postfix, dovecot, rspamd, roundcube,       │
 │  pgsql (internal 25432), redis (internal 26379)                  │
 │  Mail ports: 25, 465, 587, 143, 993, 110, 995                   │
-│  Nginx: mail.noaman.cloud subdomain                              │
+│  Nginx: mail.noaman.cloud (Let's Encrypt SSL, safe path)         │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
@@ -367,7 +367,7 @@ npm run start:prod                                     # Run on port 8088
 - **Deploy concurrency**: `concurrency: group: deploy-vps, cancel-in-progress: false` prevents overlapping deploys (concurrent runs caused SIGTERM 143).
 - **git clean exclusion**: `git clean -fd -e officernd/.venv` preserves the Python venv across deploys.
 - **Portainer**: Monitoring/debugging only. GitHub Actions is the source of truth for deployments. Manual Portainer changes may be overwritten on next deploy. Admin credentials pre-set via `--admin-password` bcrypt hash in docker-compose.yml (admin/admin123). Cloudflare Rocket Loader may block some scripts but doesn't prevent functionality.
-- **BillionMail**: Installed separately at `/opt/BillionMail` via official installer (NOT in root compose). Email domain is `noaman.cloud`, hostname `mail.noaman.cloud`. Admin panel: `https://mail.noaman.cloud` (nginx redirects root to safe path `/nzaYDxua`). Credentials in `billionmail.conf` (`ADMIN_USERNAME`/`ADMIN_PASSWORD`). Uses own internal PostgreSQL (not host). Deploy fixes: `conf/askai` dir created, `HTTPS_PORT=8443` in `.env` (frees 443 for nginx), `BILLIONMAIL_HOSTNAME=mail.noaman.cloud`. Let's Encrypt SSL via certbot — runs **after** nginx config copy (certbot adds `listen 443 ssl` lines to the config; must re-run each deploy since config is overwritten). DNS requires MX, SPF, DKIM, DMARC records.
+- **BillionMail**: Installed separately at `/opt/BillionMail` via official installer (NOT in root compose). Email domain is `noaman.cloud`, hostname `mail.noaman.cloud`. Admin panel: `https://mail.noaman.cloud` (nginx redirects root to safe path `/nzaYDxua`). Credentials in `billionmail.conf` (`ADMIN_USERNAME`/`ADMIN_PASSWORD`). Uses own internal PostgreSQL (not host). Deploy fixes (in GitHub Actions): `conf/askai` dir created, `HTTPS_PORT=8443` in `.env` (frees 443 for nginx), `BILLIONMAIL_HOSTNAME=mail.noaman.cloud`. Let's Encrypt SSL via certbot — runs **after** nginx config copy (certbot adds `listen 443 ssl` lines to the config; must re-run each deploy since config is overwritten). DB settings (one-time, set via UI, persist across deploys): admin domain `mail.noaman.cloud`, reverse proxy `https://mail.noaman.cloud`. DNS requires MX, SPF, DKIM, DMARC records.
 
 ## scrape-sw-codes Features
 
